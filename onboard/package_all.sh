@@ -62,7 +62,7 @@ dort calbin run -i 0 -f $OUT/conv_s2_ref -m conv_s2_ref_pkg --raw-in $CASE_DIR/c
 # 对比（在能跑 python3+numpy 的机器上）：
 python3 compare_bf16.py out_resize.bin     $CASE_DIR/resize_small/expected.bin --label resize
 python3 compare_bf16.py out_resize_big.bin $CASE_DIR/resize_big/expected.bin   --label resize_big
-python3 compare_bf16.py out_conv_fast.bin  $CASE_DIR/conv_s2/expected.bin --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --label conv_fast_vs_cpu
-python3 compare_bf16.py out_conv_ref.bin   $CASE_DIR/conv_s2/expected.bin --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --label conv_ref_vs_cpu
-python3 compare_bf16.py out_conv_fast.bin  out_conv_ref.bin --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 84,84,64 --expected-crop 2:82,2:82 --label conv_fast_vs_ref
+python3 compare_bf16.py out_conv_fast.bin  $CASE_DIR/conv_s2/expected.bin --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --mode conv-cpu --label conv_fast_vs_cpu
+python3 compare_bf16.py out_conv_ref.bin   $CASE_DIR/conv_s2/expected.bin --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --mode conv-cpu --label conv_ref_vs_cpu
+python3 compare_bf16.py out_conv_fast.bin  out_conv_ref.bin --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 84,84,64 --expected-crop 2:82,2:82 --mode exact --label conv_fast_vs_ref
 EOF

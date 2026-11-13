@@ -101,3 +101,7 @@ DEVICE=0 CAL_ROOT=$PWD/onboard_cal CASE_DIR=$PWD/cases OUT=$PWD/board_out bash r
 - 本仓库为 2026-11-13 黑客松工作快照；所有"已验证"数字均来自本机真实执行（日志与产物在 `evidence/`），**未编造 API 或结果**；未验证项在文档中显式标注。
 - 代码采用与 calBLAS 仓库一致的风格；所有原语调用均来自仓库真实 API（`npu/src/lib.rs`、calBLAS 模板），未猜测接口。
 - 真机验证后请把 `board_out/`（输出 + 日志）与 `docs/REAL_DEVICE_VERIFICATION.md` §8 记录模板一起归档/提 PR。
+
+## 本地复现与验收更新
+
+Jax 的环境与部署记录见 [JAX_LOCAL_SETUP.md](docs/JAX_LOCAL_SETUP.md)。测试工具修复、21 项回归测试及两组 Resize CPU 数据复核结果见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。这些本地结果不等于 NPU 真机验证。
