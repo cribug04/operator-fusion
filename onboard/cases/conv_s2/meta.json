@@ -1,0 +1,55 @@
+{
+  "op": "conv2d_s2_fast probe (k=3, s=2, pad=1, silu)",
+  "seed": 20261115,
+  "input": {
+    "file": "input_164x164x64_bf16.bin",
+    "shape": [
+      164,
+      164,
+      64
+    ],
+    "dtype": "bf16",
+    "bytes": 3442688
+  },
+  "params": {
+    "file": "param_blk0.bin",
+    "weights_shape": [
+      9,
+      64,
+      64
+    ],
+    "bias": 64,
+    "bytes": 73984
+  },
+  "expected": {
+    "file": "expected_80x80x64_bf16.bin",
+    "shape": [
+      80,
+      80,
+      64
+    ],
+    "dtype": "bf16",
+    "bytes": 819200
+  },
+  "board_output": {
+    "decl": "out_y",
+    "shape": [
+      84,
+      84,
+      64
+    ],
+    "bytes": 903168,
+    "compare_crop_y": [
+      2,
+      82
+    ],
+    "compare_crop_x": [
+      2,
+      82
+    ]
+  },
+  "tolerance": {
+    "strict": "与 examples/conv2d_s2_ref（同形状慢路）逐位相同",
+    "loose_cpu": "cosine >= 0.9999 且 max|diff| <= 4 bf16 ULP（f32 累加次序 + SiLU 近似）"
+  }
+}

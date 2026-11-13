@@ -1,0 +1,8 @@
+./model_memory_reserved_info.txt 282 bytes
+./resize_pkg/ccu0_chip0.elf 19560 bytes
+./resize_pkg/ccu1_chip0.elf 6872 bytes
+./resize_pkg/cpu_chip0_ping.bin 4 bytes
+./resize_pkg/cpu_chip0_pong.bin 4 bytes
+./resize_pkg/pld_cpu_chip0_ping.bin 44 bytes
+./resize_pkg/pld_cpu_chip0_pong.bin 44 bytes
+./resize_pkg/submodel_memory_reserved_info.txt 608 bytes

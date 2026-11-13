@@ -1,0 +1,3 @@
+   Compiling calblas v0.1.0 (/root/calBLAS)
+   Compiling resize-probe-big v0.1.0 (/root/calBLAS/examples/resize_probe_big)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.39s

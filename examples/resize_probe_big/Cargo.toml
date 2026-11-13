@@ -1,0 +1,18 @@
+[package]
+name = "resize-probe-big"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+step = []
+
+[dependencies]
+calblas = { path = "../.." }
+caldnn = { path = "../../../calDNN" }
+npu = { path = "../../../npu" }
+
+[workspace]

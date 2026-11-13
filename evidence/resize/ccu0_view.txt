@@ -1,0 +1,12 @@
+/tmp/resize_cal/resize_pkg/ccu0_chip0.elf
+  entry       0x0a210000
+  elf_type    2
+  first_addr  0x0a210000
+  load_size   14608 字节
+
+  section           address       size     kind      pad
+  .text           0xa210000      14100        1        0
+  .nops           0xa213714        104        1        0
+  .rodata         0xa21377c        404        1        0
+
+  ⭐ 各节拼起来正好 14608 字节 = load_size

@@ -1,0 +1,863 @@
+diff --git a/examples/conv2d_s2_probe/Cargo.toml b/examples/conv2d_s2_probe/Cargo.toml
+new file mode 100755
+index 0000000..eeb7bc3
+--- /dev/null
++++ b/examples/conv2d_s2_probe/Cargo.toml
+@@ -0,0 +1,18 @@
++[package]
++name = "conv2d-s2-probe"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[lib]
++crate-type = ["rlib"]
++
++[features]
++step = []
++
++[dependencies]
++calblas = { path = "../.." }
++caldnn = { path = "../../../calDNN" }
++npu = { path = "../../../npu" }
++
++[workspace]
+diff --git a/examples/conv2d_s2_probe/README.md b/examples/conv2d_s2_probe/README.md
+new file mode 100755
+index 0000000..21b13cf
+--- /dev/null
++++ b/examples/conv2d_s2_probe/README.md
+@@ -0,0 +1,55 @@
++# conv2d_s2_fast（实验原型）：stride-2 3×3 卷积的 FAST 路
++
++**状态：实验原型（未进共享 `conv2d!` 模板、未接任何模型、数值/性能未验证）**。
++目的：验证 `conv2d!` 只对 `S == 1` 开 FAST 路（`vision.rs:122`）的问题能否用“偶/奇像素分块”解决——YOLO26n 有 6 个 stride-2 卷积只能走慢路。
++
++## 思路
++
++对输出行 `oy`，3 个输入行（padded 行 `oy*2+ky+1`）各拆成 **奇像素 / 偶像素两份 VB cache**（从 DDR 按像素行距 `2*CI` 直接绑视图加载；odd 起点 padded 列 `B-1`、even 起点 `B`）。
++于是 9 个 tap 的 lhs 都是某份 cache 里的**连续 16 行**：
++
++| tap kx | lhs 来源（padded 列 = 2·ox + kx + 1） |
++| --- | --- |
++| 0 | `odd[ky]` 行 `mb*16`（odd 从 padded 列 B-1 起） |
++| 1 | `even[ky]` 行 `mb*16`（even 从 padded 列 B 起） |
++| 2 | `odd[ky]` 行 `mb*16+1` |
++
++这样 stride-2 也能享受“输入行只从 DDR 读一次、9 个 tap 从 VB 取 lhs”的快路。
++
++## 本例
++
++YOLO26n 的 `conv3s2_80x80_64to64` 同形状：**80×80×64 → 40×40×64，k=3、s=2、silu**，输入 padded NHWC `[164][164][64]`，
++权重 `[9][64][64]` bf16（BN 已折入），bias f32 `[64]`（放在 `@w` 偏移 73728），双核（`cores = 2`，按输出行分）。
++
++## 构建/打包（WSL）
++
++```bash
++cd ~/calBLAS
++cargo build --manifest-path examples/conv2d_s2_probe/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++# => conv2d_s2_probe.cvx (14,496 B) / .cvxo (2,608 B)
++
++# docc：calbin 需要参数块（本原型用全 0 占位；长度必须等于 @w 声明）
++rm -rf /tmp/conv_s2_pkg /tmp/conv_s2_cal && mkdir -p /tmp/conv_s2_pkg
++cp examples/conv2d_s2_probe/target/dopamine-unknown-none-cvx/npu/conv2d_s2_probe.cvx /tmp/conv_s2_pkg/step.cvx
++truncate -s 73984 /tmp/conv_s2_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/conv_s2_pkg -o /tmp/conv_s2_cal   # exit 0
++docc calbin doctor /tmp/conv_s2_cal                           # 拒收 0 条
++```
++
++## 本机验证结果（2026-11-13，仅平台侧）
++
++| 项 | 结果 |
++| --- | --- |
++| 设备遍编译 | ✅ `.cvx` 14,496 B / `.cvxo` 2,608 B |
++| `docc calbin from-calvx` | ✅ exit 0；权重块 73,984 B；ccu0/ccu1 ELF 各 **22,168 B**（双核各编一份） |
++| `docc calbin doctor` | ✅ **拒收 0 条**（2 条 ping/pong 警告） |
++| 数值正确性 | ❌ **未验证**（无板卡、无 `cvx` 模拟器；TU 累加次序与 numpy 不可能逐位） |
++| 性能 | ❌ **未验证**（需真机对比慢路） |
++
++## 后续
++
++1. **上板前先做 CPU 标定**：用 numpy 生成“同布局输入 + 权重 + bias”，按 TU 无法复刻的累加次序给容差口径；
++2. 上板与慢路版本（同形状 `conv2d!`）比：① 输出 max diff/余弦；② 单算子耗时；
++3. 通过后把分支合并进 `conv2d!`（`S == 2` 时走这套 cache），并接入 YOLO26n 的 6 个 conv3s2；
++4. 推广：`dwconv3!`/`maxpool5!` 的 stride-2 变体同样可用这个“偶/奇分块”技巧。
+diff --git a/examples/conv2d_s2_probe/src/kernels.rs b/examples/conv2d_s2_probe/src/kernels.rs
+new file mode 100755
+index 0000000..9aa2f52
+--- /dev/null
++++ b/examples/conv2d_s2_probe/src/kernels.rs
+@@ -0,0 +1,2 @@
++//! stride-2 FAST 卷积探针：h=80, w=80, cin=64, cout=64, k=3, s=2, act=silu。
++calblas::conv2d_s2_fast!(pub conv_s2_probe: h = 80, w = 80, cin = 64, cout = 64, act = silu);
+diff --git a/examples/conv2d_s2_probe/src/lib.rs b/examples/conv2d_s2_probe/src/lib.rs
+new file mode 100755
+index 0000000..4a60349
+--- /dev/null
++++ b/examples/conv2d_s2_probe/src/lib.rs
+@@ -0,0 +1,7 @@
++//! conv2d_s2_fast 探针：YOLO26n 的 `conv3s2_80x80_64to64` 同形状（80×80×64 → 40×40×64，k=3、s=2、silu）。
++#![no_std]
++
++pub mod kernels;
++
++#[cfg(feature = "step")]
++mod step;
+diff --git a/examples/conv2d_s2_probe/src/step.rs b/examples/conv2d_s2_probe/src/step.rs
+new file mode 100755
+index 0000000..7ac84fe
+--- /dev/null
++++ b/examples/conv2d_s2_probe/src/step.rs
+@@ -0,0 +1,18 @@
++//! 整个程序：输入 [164][164][64] bf16（padded NHWC 紧排）、权重 [9][64][64] bf16、bias f32 [64]、输出 [84][84][64] bf16。
++use crate::kernels::*;
++
++npu::decls! {
++    in_x: input, bytes = 3442688, double_buffer;    // 164*164*64*2 = 3,442,688 B
++    out_y: output, bytes = 903168, double_buffer;   // 84*84*64*2
++    w: weights, bytes = 73984;                      // 9*64*64*2 + 64*4
++}
++
++#[npu::program(chiplets = 1, cores = 2)]
++pub fn step() {
++    conv_s2_probe(
++        in_x().cast(),
++        w().cast(),
++        w().at(73728).cast(),
++        out_y().cast(),
++    );
++}
+diff --git a/examples/conv2d_s2_ref/Cargo.toml b/examples/conv2d_s2_ref/Cargo.toml
+new file mode 100755
+index 0000000..108540e
+--- /dev/null
++++ b/examples/conv2d_s2_ref/Cargo.toml
+@@ -0,0 +1,18 @@
++[package]
++name = "conv2d-s2-ref"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[lib]
++crate-type = ["rlib"]
++
++[features]
++step = []
++
++[dependencies]
++calblas = { path = "../.." }
++caldnn = { path = "../../../calDNN" }
++npu = { path = "../../../npu" }
++
++[workspace]
+diff --git a/examples/conv2d_s2_ref/README.md b/examples/conv2d_s2_ref/README.md
+new file mode 100755
+index 0000000..6f877c7
+--- /dev/null
++++ b/examples/conv2d_s2_ref/README.md
+@@ -0,0 +1,22 @@
++# conv2d_s2_ref：stride-2 慢路对照（真机验证用）
++
++与 `examples/conv2d_s2_probe`（`conv2d_s2_fast!` 原型）**同形状、同 decl 布局**的仓库现成慢路实现：
++
++- `calblas::conv2d!(h=80, w=80, cin=64, cout=64, k=3, s=2, pin=(64,0), pout=(64,0), act=silu)`
++- `S=2` 时 `conv2d!` 走慢路（`vision.rs:122` 的 FAST 只覆盖 `S==1`）
++
++**用途**：在真机上用**同一份 `input.bin` + 同一份 `param_blk0.bin`** 分别跑 fast 与 ref 两个 calbin，比较 `@out_y`：
++
++- 两者应当**逐位相同**（同样的 9 个 tap、同样的 mma 累加次序、同样的 bias/SiLU 宏；唯一区别是 lhs 来自 VB 还是 DDR）；
++- 若不同：说明 fast 原型的索引/奇偶映射有 bug，或 docc 对两条路径的数值合同不同——按 `REAL_DEVICE_VERIFICATION.md` 的排错表处理。
++
++## 构建/打包（WSL/Linux，同 probe）
++
++```bash
++cd ~/calBLAS
++cargo build --manifest-path examples/conv2d_s2_ref/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++# 打包时 param_blk0.bin 用开发机 gen_conv_s2_case.py 生成的真实参数块（与 probe 完全相同）
++```
++
++本机平台侧验证：`.cvx` 15,241 B，docc calbin + doctor 通过（ccu0/ccu1 各 16,152 B；权重块 73,984 B）。
+diff --git a/examples/conv2d_s2_ref/src/kernels.rs b/examples/conv2d_s2_ref/src/kernels.rs
+new file mode 100755
+index 0000000..c663d7c
+--- /dev/null
++++ b/examples/conv2d_s2_ref/src/kernels.rs
+@@ -0,0 +1,5 @@
++//! 慢路对照：calBLAS 仓库现成的 `conv2d!`（S=2 时走慢路），其它参数与 conv2d_s2_probe 完全一致。
++calblas::conv2d!(
++    pub conv_s2_ref: h = 80, w = 80, cin = 64, cout = 64, k = 3, s = 2,
++    pin = (64, 0), pout = (64, 0), act = silu
++);
+diff --git a/examples/conv2d_s2_ref/src/lib.rs b/examples/conv2d_s2_ref/src/lib.rs
+new file mode 100755
+index 0000000..894d075
+--- /dev/null
++++ b/examples/conv2d_s2_ref/src/lib.rs
+@@ -0,0 +1,7 @@
++//! 慢路对照：同形状的 `conv2d!`（k=3、s=2、silu），用于和 `conv2d_s2_fast!` 在**同一块板、同一份数据**上逐位对比。
++#![no_std]
++
++pub mod kernels;
++
++#[cfg(feature = "step")]
++mod step;
+diff --git a/examples/conv2d_s2_ref/src/step.rs b/examples/conv2d_s2_ref/src/step.rs
+new file mode 100755
+index 0000000..98a21bf
+--- /dev/null
++++ b/examples/conv2d_s2_ref/src/step.rs
+@@ -0,0 +1,18 @@
++//! 与 conv2d_s2_probe 相同的 decl 布局/大小，便于同一份输入与参数块直接跑、直接比。
++use crate::kernels::*;
++
++npu::decls! {
++    in_x: input, bytes = 3442688, double_buffer;    // 164*164*64*2 = 3,442,688 B
++    out_y: output, bytes = 903168, double_buffer;   // 84*84*64*2
++    w: weights, bytes = 73984;                      // 9*64*64*2 + 64*4
++}
++
++#[npu::program(chiplets = 1, cores = 2)]
++pub fn step() {
++    conv_s2_ref(
++        in_x().cast(),
++        w().cast(),
++        w().at(73728).cast(),
++        out_y().cast(),
++    );
++}
+diff --git a/examples/resize_probe/Cargo.toml b/examples/resize_probe/Cargo.toml
+new file mode 100755
+index 0000000..2c9df2a
+--- /dev/null
++++ b/examples/resize_probe/Cargo.toml
+@@ -0,0 +1,19 @@
++[package]
++name = "resize-probe"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[lib]
++crate-type = ["rlib"]
++
++[features]
++step = []
++
++[dependencies]
++calblas = { path = "../.." }
++caldnn = { path = "../../../calDNN" }
++npu = { path = "../../../npu" }
++
++# 独立工作区：不影响 calBLAS 主工作区的成员列表
++[workspace]
+diff --git a/examples/resize_probe/README.md b/examples/resize_probe/README.md
+new file mode 100755
+index 0000000..58d7028
+--- /dev/null
++++ b/examples/resize_probe/README.md
+@@ -0,0 +1,58 @@
++# resize_bilinear2：Calculet NPU 双线性上采样 ×2 算子（探针 example）
++
++本 example 用一个最小整步程序（`npu::decls!` + `#[npu::program]`）只跑一个 kernel：
++**`resize_bilinear2`（NHWC bf16，[H][W][C] → [2H][2W][C]，align_corners=False）**。
++
++## 文件
++
++| 文件 | 说明 |
++| --- | --- |
++| `../../src/kernels/vision.rs` | 算子模板 `resize_bilinear2!`（追加在 `upsample2!` 之后） |
++| `Cargo.toml` / `src/lib.rs` | 独立 example crate（自带 `[workspace]`，不影响 calBLAS 主工作区） |
++| `src/kernels.rs` | 尺寸特化：32×32×16 ⇒ 64×64×16 |
++| `src/step.rs` | 整步程序：`in_x`/`out_y` 两个 decl + `#[npu::program]` 调 kernel |
++| `verify.sh` | WSL 内一键：设备遍编译 → `docc calbin from-calvx` → `docc calbin doctor` → 反汇编/查看 ELF |
++
++## 编译 / 打包（WSL，工具链已安装）
++
++```bash
++cd ~/calBLAS
++cargo build --manifest-path examples/resize_probe/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++# => examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvx / .cvxo
++
++rm -rf /tmp/resize_pkg /tmp/resize_cal && mkdir -p /tmp/resize_pkg
++cp examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvx /tmp/resize_pkg/step.cvx
++: > /tmp/resize_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/resize_pkg -o /tmp/resize_cal
++docc calbin doctor /tmp/resize_cal        # 期望：拒收 0 条
++```
++
++## 已验证（本机 WSL2，2026-11-13）
++
++- ✅ 设备遍编译：`cargo build ... --target dopamine-unknown-none-cvx` 成功（rustc 1.98.1-calculet）
++- ✅ `docc calbin from-calvx` 成功：产出 2 个 CCU ELF（ccu0 19,560 B / ccu1 6,872 B）+ CPU 命令流
++- ✅ `docc calbin doctor`：**拒收 0 条，exit 0**（2 条 ping/pong 地址警告，见下）
++- ✅ 确定性：同一输入两次 `docc` 构建，calbin 逐字节相同（`docc calbin diff` 报「一致」）
++- ✅ CCU ELF 反汇编：2849 条指令全部可识别（0 unknown，每个字节都被覆盖）；`docc elf ccu view` 显示 `load_size = 14608 = .text + .nops + .rodata` 各节之和
++- ✅ CPU 参考：按 kernel 运算次序的 f32 结果与独立 float64 数学参照在全部 65,536 个输出上 bf16 舍入 100% 一致
++
++## ❌ 本机无法验证（缺少条件）
++
++- **没有 `cvx` 模拟器**（calvxus 不在赛题三个仓库，工具链也不带），也没有 NPU 真机（`dort overview` 报「未发现 Calculet 设备」）
++  ⇒ **数值/真机行为尚未验证**；`input_32x32x16_bf16.bin` / `expected_64x64x16_bf16.bin` 已生成，有板即可跑：
++
++```bash
++dort calbin run -i 0 -f /tmp/resize_cal -m resize_pkg \
++  --raw-in input_32x32x16_bf16.bin --raw-out out.bin \
++  --in-tensor in_x --out-tensor out_y
++# 比较 out.bin 与 expected_64x64x16_bf16.bin（都是 bf16 原始位型，64×64×16）
++```
++
++## 已知限制 / 后续
++
++1. **单核**（`cores = 1`）：为绕开 docc 的「for 体内带结果 if 不支持」限制，采用单核 + 三段展开；后续可做 cores=2 版本（按行分核，需避开 clamp 条件分支）。
++2. `docc` 的两条 ping/pong 地址警告：`mem.decl` 已标 `double_buffer`，但 docc 对「程序不切换 ping/pong」的场景仍把两份分到同一地址（仅警告，doctor 通过）；不影响单次推理。
++3. `docc elf kabi` 对该 kernel 报 `calt-bind` 错误（docc 自己的诊断也说「多半是 docc 自己的缺陷」）；`docc calbin from-calvx` 路线不受影响。
++4. 目前只支持 **×2、NHWC、C ≤ 128**；任意尺寸 / 任意倍率 / NCHW / 进 calDNN 图（Engine 注册）是下一步。
++5. 性能未测（无板）；单核 + 每行重复计算 3 行，优化空间明确（行流水复用可减少 2/3 的行内插值计算）。
+diff --git a/examples/resize_probe/src/kernels.rs b/examples/resize_probe/src/kernels.rs
+new file mode 100755
+index 0000000..9af8df3
+--- /dev/null
++++ b/examples/resize_probe/src/kernels.rs
+@@ -0,0 +1,2 @@
++//! resize_bilinear2 的尺寸特化：32×32×16 bf16 ⇒ 64×64×16 bf16（NHWC、align_corners=False）。
++calblas::resize_bilinear2!(pub resize_bilinear2: h = 32, w = 32, c = 16);
+diff --git a/examples/resize_probe/src/lib.rs b/examples/resize_probe/src/lib.rs
+new file mode 100755
+index 0000000..919f0ab
+--- /dev/null
++++ b/examples/resize_probe/src/lib.rs
+@@ -0,0 +1,7 @@
++//! resize 探针 example：一个 CalVX 程序只跑 `resize_bilinear2`，输入/输出由主机按 decls 写入/读回。
++#![no_std]
++
++pub mod kernels;
++
++#[cfg(feature = "step")]
++mod step;
+diff --git a/examples/resize_probe/src/step.rs b/examples/resize_probe/src/step.rs
+new file mode 100755
+index 0000000..dfee889
+--- /dev/null
++++ b/examples/resize_probe/src/step.rs
+@@ -0,0 +1,12 @@
++//! 整个程序：静态存储 + 入口（`cargo build --features step --target dopamine-unknown-none-cvx` 出一份 `.cvx`）。
++use crate::kernels::*;
++
++npu::decls! {
++    in_x: input, bytes = 32768, double_buffer;      // 32*32*16*2
++    out_y: output, bytes = 131072, double_buffer;   // 64*64*16*2
++}
++
++#[npu::program(chiplets = 1, cores = 1)]
++pub fn step() {
++    resize_bilinear2(in_x().cast(), out_y().cast());
++}
+diff --git a/examples/resize_probe/verify.sh b/examples/resize_probe/verify.sh
+new file mode 100755
+index 0000000..777bfac
+--- /dev/null
++++ b/examples/resize_probe/verify.sh
+@@ -0,0 +1,38 @@
++#!/bin/bash
++# Rebuild + package + doctor for the resize_bilinear2 probe example (run inside WSL).
++# Usage: bash examples/resize_probe/verify.sh   (cwd = calBLAS 仓库根，工具链 channel=calculet)
++set -uo pipefail
++export PATH=/root/.cargo/bin:$PATH
++export RUSTUP_HOME=${RUSTUP_HOME:-/root/.rustup}
++export CARGO_HOME=${CARGO_HOME:-/root/.cargo}
++cd "$(dirname "$0")/../.."
++
++echo "== 1) device pass build =="
++cargo build --manifest-path examples/resize_probe/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++CVX=examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvx
++CVXO=examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvxo
++ls -la "$CVX" "$CVXO"
++
++echo "== 2) docc calbin from-calvx =="
++rm -rf /tmp/resize_pkg /tmp/resize_cal
++mkdir -p /tmp/resize_pkg
++cp "$CVX" /tmp/resize_pkg/step.cvx
++: > /tmp/resize_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/resize_pkg -o /tmp/resize_cal
++
++echo "== 3) docc calbin doctor（期望：拒收 0 条，exit 0） =="
++docc calbin doctor /tmp/resize_cal
++echo "doctor exit=$?"
++
++echo "== 4) CCU ELF =="
++ls -la /tmp/resize_cal/resize_pkg/*.elf
++docc elf ccu view /tmp/resize_cal/resize_pkg/ccu0_chip0.elf | head -12
++
++echo "== 5) 真机（有板时，主机侧） =="
++cat <<'EOF'
++dort calbin run -i 0 -f /tmp/resize_cal -m resize_pkg \
++  --raw-in input_32x32x16_bf16.bin --raw-out out.bin \
++  --in-tensor in_x --out-tensor out_y
++# 然后把 out.bin 与 reference.py 生成的 expected_64x64x16_bf16.bin 逐元素比较
++EOF
+diff --git a/examples/resize_probe_big/Cargo.toml b/examples/resize_probe_big/Cargo.toml
+new file mode 100755
+index 0000000..126b11a
+--- /dev/null
++++ b/examples/resize_probe_big/Cargo.toml
+@@ -0,0 +1,18 @@
++[package]
++name = "resize-probe-big"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[lib]
++crate-type = ["rlib"]
++
++[features]
++step = []
++
++[dependencies]
++calblas = { path = "../.." }
++caldnn = { path = "../../../calDNN" }
++npu = { path = "../../../npu" }
++
++[workspace]
+diff --git a/examples/resize_probe_big/README.md b/examples/resize_probe_big/README.md
+new file mode 100755
+index 0000000..63c9ebf
+--- /dev/null
++++ b/examples/resize_probe_big/README.md
+@@ -0,0 +1,43 @@
++# resize_bilinear2_tiled：通道分块版双线性上采样（大 C 支持）
++
++本 example 验证 **`resize_bilinear2_tiled!`**：语义与 `resize_bilinear2!` 完全相同（NHWC bf16、×2、`align_corners=False`、边缘 clamp、f32 中间计算 + 最后一次 RNE 舍 bf16），
++区别是把 C 切成 `NC = C/CC` 块顺序处理，使中间 cache 只占 `W × CC`，从而支持原版放不下的 **大通道数**。
++
++- 本例：**32×32×256 bf16 → 64×64×256 bf16**，`CC = 64`（4 块）
++- 原版上限 `C <= 128`（f32 中间 cache 一行 ≤ 512 B）；分块版约束：`CC % 32 == 0`、`C % CC == 0`、`W*CC*56 B <= 384 KiB`
++
++## 构建 / 打包（WSL）
++
++```bash
++cd ~/calBLAS
++cargo build --manifest-path examples/resize_probe_big/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++# => .../npu/resize_probe_big.cvx (40,369 B) / .cvxo (7,118 B)
++
++rm -rf /tmp/resize_big_pkg /tmp/resize_big_cal && mkdir -p /tmp/resize_big_pkg
++cp examples/resize_probe_big/target/dopamine-unknown-none-cvx/npu/resize_probe_big.cvx /tmp/resize_big_pkg/step.cvx
++: > /tmp/resize_big_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/resize_big_pkg -o /tmp/resize_big_cal   # exit 0
++docc calbin doctor /tmp/resize_big_cal                               # 拒收 0 条
++```
++
++## 本机验证结果（2026-11-13，WSL2 + calculet 工具链）
++
++| 项 | 结果 |
++| --- | --- |
++| 设备遍编译 | ✅ `resize_probe_big.cvx` 40,369 B / `.cvxo` 7,118 B（C=256，4 块） |
++| `docc calbin from-calvx` | ✅ exit 0，ccu0 86,568 B / ccu1 6,872 B |
++| `docc calbin doctor` | ✅ **拒收 0 条**（2 条 ping/pong 警告） |
++| CCU 反汇编 | ✅ 15,997 条指令全部可识别（0 unknown，每字节覆盖）；`load_size 81612` = 各节之和 |
++| 构建确定性 | ✅ 两次 calbin 逐字节相同 |
++| CPU 参考 | ✅ 65,536×4 个输出与独立 float64 参照 **bf16 舍入 100% 一致**（≤0.996 ULP） |
++| 真机数值 | ❌ 未验证（本机无板卡/无 `cvx` 模拟器） |
++
++数据：`input_32x32x256_bf16.bin`（524,288 B）+ `expected_64x64x256_bf16.bin`（2,097,152 B），
++真机命令同原版：`dort calbin run -i 0 -f /tmp/resize_big_cal -m resize_big_pkg --raw-in … --raw-out … --in-tensor in_x --out-tensor out_y`。
++
++## 说明
++
++- 通道分块不改数值（逐通道独立），只是把工作集切开；**同一套 CPU 参考/误差口径**。
++- 生成代码里 `for cc in 0..NC` 是常数轮数循环（与 `conv2d!` 的 `for nb in 0..CO/NC` 同构），内层仍是单层运行时行循环。
++- 代码由 `verify.sh` 一键复现。
+diff --git a/examples/resize_probe_big/src/kernels.rs b/examples/resize_probe_big/src/kernels.rs
+new file mode 100755
+index 0000000..b445d6e
+--- /dev/null
++++ b/examples/resize_probe_big/src/kernels.rs
+@@ -0,0 +1,2 @@
++//! 通道分块版 resize_bilinear2：32×32×256 ⇒ 64×64×256（CC=64，共 4 块）。
++calblas::resize_bilinear2_tiled!(pub resize_bilinear2_big: h = 32, w = 32, c = 256, cc = 64);
+diff --git a/examples/resize_probe_big/src/lib.rs b/examples/resize_probe_big/src/lib.rs
+new file mode 100755
+index 0000000..0194385
+--- /dev/null
++++ b/examples/resize_probe_big/src/lib.rs
+@@ -0,0 +1,7 @@
++//! resize 通道分块探针：32×32×256 bf16 ⇒ 64×64×256 bf16（C=256，原版 C≤128 放不下，用分块版 cc=64）。
++#![no_std]
++
++pub mod kernels;
++
++#[cfg(feature = "step")]
++mod step;
+diff --git a/examples/resize_probe_big/src/step.rs b/examples/resize_probe_big/src/step.rs
+new file mode 100755
+index 0000000..1df38ef
+--- /dev/null
++++ b/examples/resize_probe_big/src/step.rs
+@@ -0,0 +1,12 @@
++//! 整个程序：静态存储 + 入口（`cargo build --features step --target dopamine-unknown-none-cvx` 出一份 `.cvx`）。
++use crate::kernels::*;
++
++npu::decls! {
++    in_x: input, bytes = 524288, double_buffer;      // 32*32*256*2
++    out_y: output, bytes = 2097152, double_buffer;   // 64*64*256*2
++}
++
++#[npu::program(chiplets = 1, cores = 1)]
++pub fn step() {
++    resize_bilinear2_big(in_x().cast(), out_y().cast());
++}
+diff --git a/examples/resize_probe_big/verify.sh b/examples/resize_probe_big/verify.sh
+new file mode 100755
+index 0000000..4f4b36b
+--- /dev/null
++++ b/examples/resize_probe_big/verify.sh
+@@ -0,0 +1,19 @@
++#!/bin/bash
++# Rebuild + package + doctor for the channel-tiled resize probe (C=256), run inside WSL from calBLAS root.
++set -uo pipefail
++export PATH=/root/.cargo/bin:$PATH
++export RUSTUP_HOME=${RUSTUP_HOME:-/root/.rustup}
++export CARGO_HOME=${CARGO_HOME:-/root/.cargo}
++cd "$(dirname "$0")/../.."
++
++cargo build --manifest-path examples/resize_probe_big/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++CVX=examples/resize_probe_big/target/dopamine-unknown-none-cvx/npu/resize_probe_big.cvx
++rm -rf /tmp/resize_big_pkg /tmp/resize_big_cal
++mkdir -p /tmp/resize_big_pkg
++cp "$CVX" /tmp/resize_big_pkg/step.cvx
++: > /tmp/resize_big_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/resize_big_pkg -o /tmp/resize_big_cal
++docc calbin doctor /tmp/resize_big_cal
++echo "doctor exit=$?"
++docc elf ccu view /tmp/resize_big_cal/resize_big_pkg/ccu0_chip0.elf | head -12
+diff --git a/src/kernels/vision.rs b/src/kernels/vision.rs
+index 0e3bbf2..12a581d 100644
+--- a/src/kernels/vision.rs
++++ b/src/kernels/vision.rs
+@@ -739,3 +739,319 @@ macro_rules! spatial_attn {
+         $r16.reduce(Combine::$kind, $m16, 1);
+     }};
+ }
++
++/// 双线性上采样 ×2（NHWC、无边框，bf16）：输入 x `[H][W][C]` ⇒ 输出 y `[2H][2W][C]`。
++///
++/// 语义 = `torch.nn.functional.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)`
++/// 的 2× 情形：输出像素 (oy, ox) 的源坐标 `u = (ox + 0.5) / 2 - 0.5`，边缘 clamp 到 `[0, W-1] / [0, H-1]`。
++/// 中间按 f32 计算（每一步 mul/add 各舍一次），最后一次性 RNE 舍回 bf16；权重只有 0.25 / 0.75（编译期常数）。
++/// 约束：`C <= 128`（f32 中间 cache 一行 `C*4 B <= 512 B`），`H, W >= 3`，尺寸均为编译期常量。
++///
++/// 实现要点：**无运行时条件分支**（docc 的 calvx-to-calt 目前不收「for 体里带结果的 if」）——
++/// 第 0 行、中间行（`for iy in 1..H-1`，边界都是常量）、最后一行三段展开，行号 clamp 直接写成常量/线性表达式。
++#[macro_export]
++macro_rules! resize_bilinear2 {
++    ($vis:vis $name:ident: h = $h:expr, w = $w:expr, c = $c:expr) => {
++        #[npu::kernel(numerics = "ks1")]
++        $vis fn $name(x: npu::Ptr<npu::Ddr, npu::bf16>, y: npu::Ptr<npu::Ddr, npu::bf16>) {
++            const H: usize = $h;
++            const W: usize = $w;
++            const C: usize = $c;
++            const _: () = assert!(H >= 3 && W >= 3, "resize_bilinear2：H、W 至少 3（第 0 行/最后一行单独展开）");
++            const _: () = assert!(C > 0 && C <= 128, "resize_bilinear2：C 必须 1..=128（f32 中间 cache 一行 ≤ 512 B）");
++
++            // 第 0 行：输出行 0/1 用输入行 (0, 0, 1)
++            $crate::resize_bilinear2!(@pair x, y, $h, $w, $c, 0, 0, 1);
++            // 中间行：输入行 (iy-1, iy, iy+1)
++            for iy in 1..H - 1 {
++                $crate::resize_bilinear2!(@pair x, y, $h, $w, $c, iy - 1, iy, iy + 1);
++            }
++            // 最后一行：输出行 2H-2/2H-1 用输入行 (H-2, H-1, H-1)
++            $crate::resize_bilinear2!(@pair x, y, $h, $w, $c, $h - 2, $h - 1, $h - 1);
++        }
++    };
++
++    // 处理一个「输入行 iy」对应的两条输出行（2iy、2iy+1），ia/ic 是上下邻行（已按边界 clamp 好的常量/线性表达式）。
++    (@pair $x:ident, $y:ident, $h:expr, $w:expr, $c:expr, $ia:expr, $iy:expr, $ic:expr) => {{
++        use npu::prelude::*;
++        const H: usize = $h;
++        const W: usize = $w;
++        const C: usize = $c;
++        const WO: usize = 2 * W;
++        let gx = $x.bind_strided::<npu::Read, 3>([H, W, C], [W * C, C, 1]);
++        // 输出四个相位（行 2iy+a、列 2j+b）：视图行距 2C，行 r 对应输出像素 2r；起点偏 a*WO*C + b*C
++        let g00 = $y.add((0 * WO + 0) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        let g01 = $y.add((0 * WO + 1) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        let g10 = $y.add((1 * WO + 0) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        let g11 = $y.add((1 * WO + 1) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        // 三行输入（bf16 与 f32 各一份）+ 六条行内插值结果 + 两条输出 + 临时
++        let (ab, bb, cb) = (vcache::<bf16, _>([W, C]), vcache::<bf16, _>([W, C]), vcache::<bf16, _>([W, C]));
++        let (af, bf, cf) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (he_a, ho_a) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (he_b, ho_b) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (he_c, ho_c) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (oe, oo) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (ob, t) = (vcache::<bf16, _>([W, C]), vcache::<f32, _>([W, C]));
++        ab.load(gx.sub([$ia, 0, 0], [1, W, C]));
++        bb.load(gx.sub([$iy, 0, 0], [1, W, C]));
++        cb.load(gx.sub([$ic, 0, 0], [1, W, C]));
++        af.cvt(ab, Cvt::default());
++        bf.cvt(bb, Cvt::default());
++        cf.cvt(cb, Cvt::default());
++        $crate::resize_bilinear2!(@h af, he_a, ho_a, t, W);
++        $crate::resize_bilinear2!(@h bf, he_b, ho_b, t, W);
++        $crate::resize_bilinear2!(@h cf, he_c, ho_c, t, W);
++
++        // 输出行 2iy = 0.25*row(iy-1) + 0.75*row(iy)
++        oe.mul(he_a, 0.25f32);
++        t.mul(he_b, 0.75f32);
++        oe.add(oe, t);
++        ob.cvt(oe, Cvt::default());
++        ob.store(g00.sub([$iy * WO, 0], [W, C]));
++        oo.mul(ho_a, 0.25f32);
++        t.mul(ho_b, 0.75f32);
++        oo.add(oo, t);
++        ob.cvt(oo, Cvt::default());
++        ob.store(g01.sub([$iy * WO, 0], [W, C]));
++
++        // 输出行 2iy+1 = 0.75*row(iy) + 0.25*row(iy+1)
++        oe.mul(he_b, 0.75f32);
++        t.mul(he_c, 0.25f32);
++        oe.add(oe, t);
++        ob.cvt(oe, Cvt::default());
++        ob.store(g10.sub([$iy * WO, 0], [W, C]));
++        oo.mul(ho_b, 0.75f32);
++        t.mul(ho_c, 0.25f32);
++        oo.add(oo, t);
++        ob.cvt(oo, Cvt::default());
++        ob.store(g11.sub([$iy * WO, 0], [W, C]));
++    }};
++
++    // 行内双线性：he[x] = 0.75*f[x] + 0.25*f[x-1]（x=0 用 f[0]）；ho[x] = 0.75*f[x] + 0.25*f[x+1]（x=W-1 用 f[W-1]）
++    (@h $f:ident, $he:ident, $ho:ident, $t:ident, $w:expr) => {{
++        $he.mul($f, 0.75f32);
++        $t.rows(0, $w - 1).mul($f.rows(0, $w - 1), 0.25f32);
++        $he.rows(1, $w - 1).add($he.rows(1, $w - 1), $t.rows(0, $w - 1));
++        $he.rows(0, 1).copy($f.rows(0, 1));
++        $ho.mul($f, 0.75f32);
++        $t.rows(0, $w - 1).mul($f.rows(1, $w - 1), 0.25f32);
++        $ho.rows(0, $w - 1).add($ho.rows(0, $w - 1), $t.rows(0, $w - 1));
++        $ho.rows($w - 1, 1).copy($f.rows($w - 1, 1));
++    }};
++}
++
++/// 双线性上采样 ×2（NHWC、无边框，bf16）—— **通道分块版**：输入 `[H][W][C]` ⇒ 输出 `[2H][2W][C]`。
++///
++/// 语义与 `resize_bilinear2!` 完全相同（`align_corners=False`、边缘 clamp、f32 中间计算、最后 RNE 舍 bf16），
++/// 区别只在把 C 切成 `NC = C/CC` 块顺序处理：每块的中间 cache 只占 `W × CC` 个元素，因此 **支持更大的 C**
++/// （原版 f32 中间 cache 一行 `C*4 <= 512 B` ⇒ C ≤ 128；分块版按 CC 算）。
++///
++/// 约束：`CC >= 32 && CC % 32 == 0 && C % CC == 0`（块偏移 `cc*CC*2 B` 是 64 B 整数倍，docc 可证对齐）；
++/// `H, W >= 3`；`W*CC*56 B <= 384 KiB`（12 份 f32 + 4 份 bf16 中间 cache 的容量上限）。
++/// 结构：`for cc in 0..NC`（**常数轮数**，docc/calt 允许与内层运行时循环组合，同 `conv2d!` 的 nb 外层）内嵌
++/// “第 0 行 / `for iy in 1..H-1` / 最后一行”三段，全程无运行时条件分支。
++#[macro_export]
++macro_rules! resize_bilinear2_tiled {
++    ($vis:vis $name:ident: h = $h:expr, w = $w:expr, c = $c:expr, cc = $cc:expr) => {
++        #[npu::kernel(numerics = "ks1")]
++        $vis fn $name(x: npu::Ptr<npu::Ddr, npu::bf16>, y: npu::Ptr<npu::Ddr, npu::bf16>) {
++            const H: usize = $h;
++            const W: usize = $w;
++            const C: usize = $c;
++            const CC: usize = $cc;
++            const NC: usize = C / CC;
++            const _: () = assert!(H >= 3 && W >= 3, "resize_bilinear2_tiled：H、W 至少 3");
++            const _: () = assert!(CC >= 32 && CC % 32 == 0 && C % CC == 0, "resize_bilinear2_tiled：CC 是 >=32 的 32 倍数且整除 C");
++            const _: () = assert!(W * CC * 56 <= 384 * 1024, "resize_bilinear2_tiled：W*CC 太大，中间 cache 放不进 VB");
++            for cci in 0..NC {
++                let xoff = cci * CC;
++                $crate::resize_bilinear2_tiled!(@pair x, y, $h, $w, $c, $cc, xoff, 0, 0, 1);
++                for iy in 1..H - 1 {
++                    $crate::resize_bilinear2_tiled!(@pair x, y, $h, $w, $c, $cc, xoff, iy - 1, iy, iy + 1);
++                }
++                $crate::resize_bilinear2_tiled!(@pair x, y, $h, $w, $c, $cc, xoff, $h - 2, $h - 1, $h - 1);
++            }
++        }
++    };
++
++    // 处理输入行 iy 对应的两条输出行 2iy / 2iy+1；ia/ic 是上/下邻行（边界处已 clamp 成常量/线性表达式）。
++    (@pair $x:ident, $y:ident, $h:expr, $w:expr, $c:expr, $cc:expr, $xoff:expr, $ia:expr, $iy:expr, $ic:expr) => {{
++        use npu::prelude::*;
++        const H: usize = $h;
++        const W: usize = $w;
++        const C: usize = $c;
++        const CC: usize = $cc;
++        const WO: usize = 2 * W;
++        let xoff: usize = $xoff;
++        // 输入按“像素行距 C、通道块偏移 xoff”绑定；输出四个相位按“像素行距 2*C、通道块偏移 xoff”绑定
++        let gx = $x.add(xoff * 2).bind_strided::<npu::Read, 3>([H, W, CC], [W * C, C, 1]);
++        let g00 = $y.add(((0 * WO + 0) * C + xoff) * 2).bind_strided::<npu::Write, 2>([H * WO, CC], [2 * C, 1]);
++        let g01 = $y.add(((0 * WO + 1) * C + xoff) * 2).bind_strided::<npu::Write, 2>([H * WO, CC], [2 * C, 1]);
++        let g10 = $y.add(((1 * WO + 0) * C + xoff) * 2).bind_strided::<npu::Write, 2>([H * WO, CC], [2 * C, 1]);
++        let g11 = $y.add(((1 * WO + 1) * C + xoff) * 2).bind_strided::<npu::Write, 2>([H * WO, CC], [2 * C, 1]);
++        let (ab, bb, cb) = (vcache::<bf16, _>([W, CC]), vcache::<bf16, _>([W, CC]), vcache::<bf16, _>([W, CC]));
++        let (af, bf, cf) = (vcache::<f32, _>([W, CC]), vcache::<f32, _>([W, CC]), vcache::<f32, _>([W, CC]));
++        let (he_a, ho_a) = (vcache::<f32, _>([W, CC]), vcache::<f32, _>([W, CC]));
++        let (he_b, ho_b) = (vcache::<f32, _>([W, CC]), vcache::<f32, _>([W, CC]));
++        let (he_c, ho_c) = (vcache::<f32, _>([W, CC]), vcache::<f32, _>([W, CC]));
++        let (oe, oo) = (vcache::<f32, _>([W, CC]), vcache::<f32, _>([W, CC]));
++        let (ob, t) = (vcache::<bf16, _>([W, CC]), vcache::<f32, _>([W, CC]));
++        ab.load(gx.sub([$ia, 0, 0], [1, W, CC]));
++        bb.load(gx.sub([$iy, 0, 0], [1, W, CC]));
++        cb.load(gx.sub([$ic, 0, 0], [1, W, CC]));
++        af.cvt(ab, Cvt::default());
++        bf.cvt(bb, Cvt::default());
++        cf.cvt(cb, Cvt::default());
++        $crate::resize_bilinear2_tiled!(@h af, he_a, ho_a, t, W);
++        $crate::resize_bilinear2_tiled!(@h bf, he_b, ho_b, t, W);
++        $crate::resize_bilinear2_tiled!(@h cf, he_c, ho_c, t, W);
++        oe.mul(he_a, 0.25f32);
++        t.mul(he_b, 0.75f32);
++        oe.add(oe, t);
++        ob.cvt(oe, Cvt::default());
++        ob.store(g00.sub([$iy * WO, 0], [W, CC]));
++        oo.mul(ho_a, 0.25f32);
++        t.mul(ho_b, 0.75f32);
++        oo.add(oo, t);
++        ob.cvt(oo, Cvt::default());
++        ob.store(g01.sub([$iy * WO, 0], [W, CC]));
++        oe.mul(he_b, 0.75f32);
++        t.mul(he_c, 0.25f32);
++        oe.add(oe, t);
++        ob.cvt(oe, Cvt::default());
++        ob.store(g10.sub([$iy * WO, 0], [W, CC]));
++        oo.mul(ho_b, 0.75f32);
++        t.mul(ho_c, 0.25f32);
++        oo.add(oo, t);
++        ob.cvt(oo, Cvt::default());
++        ob.store(g11.sub([$iy * WO, 0], [W, CC]));
++    }};
++
++    // 行内双线性（与 resize_bilinear2! 完全一致）：he[x]=0.75f[x]+0.25f[x-1]，ho[x]=0.75f[x]+0.25f[x+1]，边缘复制。
++    (@h $f:ident, $he:ident, $ho:ident, $t:ident, $w:expr) => {{
++        $he.mul($f, 0.75f32);
++        $t.rows(0, $w - 1).mul($f.rows(0, $w - 1), 0.25f32);
++        $he.rows(1, $w - 1).add($he.rows(1, $w - 1), $t.rows(0, $w - 1));
++        $he.rows(0, 1).copy($f.rows(0, 1));
++        $ho.mul($f, 0.75f32);
++        $t.rows(0, $w - 1).mul($f.rows(1, $w - 1), 0.25f32);
++        $ho.rows(0, $w - 1).add($ho.rows(0, $w - 1), $t.rows(0, $w - 1));
++        $ho.rows($w - 1, 1).copy($f.rows($w - 1, 1));
++    }};
++}
++
++/// **实验性** 3×3 / stride=2 卷积的 FAST 版（NHWC、四周 2 像素边框、bf16；`y = silu(conv(x)+b)`）。
++///
++/// 背景：`conv2d!` 的 FAST 路只覆盖 `S == 1`（`vision.rs:122`），stride-2 卷积（YOLO/UNet 的下采样层）只能走慢路。
++/// 本宏的做法：对每个输出行 `oy` 把 3 个输入行（padded 行 `oy*2+ky+1`）各自拆成 **偶/奇像素两份 VB cache**
++/// （odd 从 padded 列 `B-1` 起、even 从 `B` 起，两份都按像素行距 `2*CI` 直接绑视图加载），于是 tap `(ky, kx)` 需要的 lhs 永远是某一份 cache 里
++/// **连续 16 行**：`kx=0 → odd[ky] 行 mb*16`；`kx=1 → even[ky] 行 mb*16`；`kx=2 → odd[ky] 行 mb*16+1`。
++/// 这样 stride-2 也能享受“输入行只从 DDR 读一次、9 个 tap 从 VB 取 lhs”快路。
++///
++/// 约束/简化（探针版）：3×3、s=2、`W % 16 == 0`、`CI/CO % 16 == 0`、输入 `[H*2+4][W*2+4][CI]` 紧排（无通道窗口）、
++/// 权重 `[9][CI][CO]` bf16（BN 已折入）、bias f32 `[CO]`、`act = silu | none`、`cores = 2`（按输出行分）。
++#[macro_export]
++macro_rules! conv2d_s2_fast {
++    ($vis:vis $name:ident: h = $h:expr, w = $w:expr, cin = $ci:expr, cout = $co:expr, act = $act:ident) => {
++        #[npu::kernel(numerics = "ks1", cores = 2)]
++        $vis fn $name(
++            x: npu::Ptr<npu::Ddr, npu::bf16>,
++            wt: npu::Ptr<npu::Ddr, npu::bf16>,
++            bias: npu::Ptr<npu::Ddr, f32>,
++            y: npu::Ptr<npu::Ddr, npu::bf16>,
++        ) {
++            use npu::prelude::*;
++            const H: usize = $h;
++            const W: usize = $w;
++            const CI: usize = $ci;
++            const CO: usize = $co;
++            const B: usize = $crate::kernels::BORDER; // 2
++            const WI: usize = W * 2 + 2 * B;          // 输入 padded 宽（像素）
++            const WO: usize = W + 2 * B;              // 输出 padded 宽（像素）
++            const HI: usize = H * 2 + 2 * B;          // 输入 padded 行数
++            const EW: usize = W + 1;                  // 偶/奇 cache 需要的像素列数（0..=W）
++            const _: () = assert!(B == 2 && W % 16 == 0, "conv2d_s2_fast：B=2、W 是 16 的倍数");
++            const _: () = assert!(CI % 16 == 0 && CO % 16 == 0, "conv2d_s2_fast：CI/CO 是 16 的倍数");
++            const NC: usize = $crate::kernels::Cols(CI, CO).nc();
++            const NBLK: usize = CO / NC;
++
++            // 输入紧排 [HI][WO][CI]：偶像素（padded x = B, B+2, …）/ 奇像素（padded x = B+1, B+3, …）
++            let g_even = x.add(B * CI * 2).bind_strided::<npu::Read, 3>([HI, EW, CI], [WI * CI, 2 * CI, 1]);
++            let g_odd = x.add((B - 1) * CI * 2).bind_strided::<npu::Read, 3>([HI, EW, CI], [WI * CI, 2 * CI, 1]);
++            // 输出 [H+4][W+4][CO]（从内部左上角起）
++            let gy = y.add(((B * WO + B) * CO) * 2).bind_strided::<npu::Write, 4>([H, W / 16, 16, CO], [WO * CO, 16 * CO, CO, 1]);
++
++            let (ev0, od0) = (vcache::<bf16, _>([EW, CI]), vcache::<bf16, _>([EW, CI]));
++            let (ev1, od1) = (vcache::<bf16, _>([EW, CI]), vcache::<bf16, _>([EW, CI]));
++            let (ev2, od2) = (vcache::<bf16, _>([EW, CI]), vcache::<bf16, _>([EW, CI]));
++            let gw = $crate::rd!(wt, [9 * CI, CO]);
++            // 每个 nb 的 bias 一行（[NBLK][NC] 的一行）
++            let (lhs, rhs) = (mcache::<bf16, _>([16, CI]), mcache::<bf16, _>([CI, NC]));
++            let (acc, vo) = (mcache::<f32, _>([16, NC]), vcache::<f32, _>([16, NC]));
++            let (vb, yh, tmp) = (vcache::<f32, _>([1, NC]), vcache::<bf16, _>([16, NC]), vcache::<bf16, _>([16, NC]));
++
++            let (h0, hn) = $crate::halves!(H);
++            for i in 0..hn {
++                let oy = h0 + i;
++                // padded 输入行 = oy*2 + ky + 1（padding = 1）
++                ev0.load(g_even.sub([oy * 2 + 1, 0, 0], [1, EW, CI]));
++                od0.load(g_odd.sub([oy * 2 + 1, 0, 0], [1, EW, CI]));
++                ev1.load(g_even.sub([oy * 2 + 2, 0, 0], [1, EW, CI]));
++                od1.load(g_odd.sub([oy * 2 + 2, 0, 0], [1, EW, CI]));
++                ev2.load(g_even.sub([oy * 2 + 3, 0, 0], [1, EW, CI]));
++                od2.load(g_odd.sub([oy * 2 + 3, 0, 0], [1, EW, CI]));
++                for nb in 0..NBLK {
++                    let gb = $crate::rd!(bias, [CO / NC, NC]);
++                    vb.load(gb.sub([nb, 0], [1, NC]));
++                    for mb in 0..W / 16 {
++                        acc.fill(0.0f32);
++                        // tap (0,0)：even[0] 行 mb*16
++                        lhs.load_v(od0.rows(mb * 16, 16));
++                        rhs.load(gw.sub([0 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (0,1)：odd[0]
++                        lhs.load_v(ev0.rows(mb * 16, 16));
++                        rhs.load(gw.sub([1 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (0,2)：even[0] 行 mb*16+1
++                        lhs.load_v(od0.rows(mb * 16 + 1, 16));
++                        rhs.load(gw.sub([2 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (1,0)：even[1]
++                        lhs.load_v(od1.rows(mb * 16, 16));
++                        rhs.load(gw.sub([3 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (1,1)：odd[1]
++                        lhs.load_v(ev1.rows(mb * 16, 16));
++                        rhs.load(gw.sub([4 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (1,2)：even[1] 行 mb*16+1
++                        lhs.load_v(od1.rows(mb * 16 + 1, 16));
++                        rhs.load(gw.sub([5 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (2,0)：even[2]
++                        lhs.load_v(od2.rows(mb * 16, 16));
++                        rhs.load(gw.sub([6 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (2,1)：odd[2]
++                        lhs.load_v(ev2.rows(mb * 16, 16));
++                        rhs.load(gw.sub([7 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // tap (2,2)：even[2] 行 mb*16+1
++                        lhs.load_v(od2.rows(mb * 16 + 1, 16));
++                        rhs.load(gw.sub([8 * CI, nb * NC], [CI, NC]));
++                        acc.mma(lhs, rhs);
++                        // 尾处理：+ bias(f32) ⇒ bf16 ⇒ silu ⇒ 写回
++                        vo.from_m(acc);
++                        vo.add(vo, bcast(vb, &[0, 1]));
++                        yh.cvt(vo, Cvt::default());
++                        $crate::conv2d_s2_fast!(@act $act, yh, tmp);
++                        yh.store(gy.sub([oy, mb, 0, nb * NC], [1, 1, 16, NC]));
++                    }
++                }
++            }
++        }
++    };
++    (@act silu, $yh:ident, $tmp:ident) => { $crate::logistic!(silu, $yh, $yh, $tmp) };
++    (@act none, $yh:ident, $tmp:ident) => {};
++}

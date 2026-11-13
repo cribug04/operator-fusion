@@ -1,0 +1,19 @@
+[package]
+name = "resize-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+step = []
+
+[dependencies]
+calblas = { path = "../.." }
+caldnn = { path = "../../../calDNN" }
+npu = { path = "../../../npu" }
+
+# 独立工作区：不影响 calBLAS 主工作区的成员列表
+[workspace]

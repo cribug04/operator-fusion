@@ -1,0 +1,12 @@
+/tmp/conv_s2_cal/conv_s2_pkg/ccu0_chip0.elf
+  entry       0x0a210000
+  elf_type    2
+  first_addr  0x0a210000
+  load_size   17216 字节
+
+  section           address       size     kind      pad
+  .text           0xa210000      14408        1        0
+  .nops           0xa213848        104        1        0
+  .rodata         0xa2138b0       2704        1        0
+
+  ⭐ 各节拼起来正好 17216 字节 = load_size

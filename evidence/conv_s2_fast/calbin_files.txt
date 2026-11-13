@@ -1,0 +1,9 @@
+./conv_s2_pkg/ccu0_chip0.elf 22168 bytes
+./conv_s2_pkg/ccu1_chip0.elf 22168 bytes
+./conv_s2_pkg/cpu_chip0_ping.bin 4 bytes
+./conv_s2_pkg/cpu_chip0_pong.bin 4 bytes
+./conv_s2_pkg/pld_cpu_chip0_ping.bin 44 bytes
+./conv_s2_pkg/pld_cpu_chip0_pong.bin 44 bytes
+./conv_s2_pkg/submodel_memory_reserved_info.txt 614 bytes
+./model_memory_reserved_info.txt 381 bytes
+./param_blk0.bin 73984 bytes

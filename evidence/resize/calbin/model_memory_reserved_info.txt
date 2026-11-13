@@ -1,0 +1,16 @@
+calcc_ver: v0.1
+device0: [ks1]
+device_memory_required: 16777216 MB
+
+model_arch resize_pkg
+model_type llm
+n_batch 1
+max_seq_len 32768
+n_layer 0
+n_head 0
+n_dim 0
+
+dram_rsvd vaddr 0xc0000000 size 12860067840
+sram_rsvd vaddr 0x08000000 size 18612224
+sync_rsvd vaddr 0x0a080000 size 20
+

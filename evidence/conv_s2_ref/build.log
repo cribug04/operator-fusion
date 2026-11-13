@@ -1,0 +1,3 @@
+   Compiling calblas v0.1.0 (/root/calBLAS)
+   Compiling conv2d-s2-ref v0.1.0 (/root/calBLAS/examples/conv2d_s2_ref)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s

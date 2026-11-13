@@ -1,0 +1,280 @@
+diff --git a/examples/resize_probe/Cargo.toml b/examples/resize_probe/Cargo.toml
+new file mode 100755
+index 0000000..2c9df2a
+--- /dev/null
++++ b/examples/resize_probe/Cargo.toml
+@@ -0,0 +1,19 @@
++[package]
++name = "resize-probe"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[lib]
++crate-type = ["rlib"]
++
++[features]
++step = []
++
++[dependencies]
++calblas = { path = "../.." }
++caldnn = { path = "../../../calDNN" }
++npu = { path = "../../../npu" }
++
++# 独立工作区：不影响 calBLAS 主工作区的成员列表
++[workspace]
+diff --git a/examples/resize_probe/README.md b/examples/resize_probe/README.md
+new file mode 100755
+index 0000000..58d7028
+--- /dev/null
++++ b/examples/resize_probe/README.md
+@@ -0,0 +1,58 @@
++# resize_bilinear2：Calculet NPU 双线性上采样 ×2 算子（探针 example）
++
++本 example 用一个最小整步程序（`npu::decls!` + `#[npu::program]`）只跑一个 kernel：
++**`resize_bilinear2`（NHWC bf16，[H][W][C] → [2H][2W][C]，align_corners=False）**。
++
++## 文件
++
++| 文件 | 说明 |
++| --- | --- |
++| `../../src/kernels/vision.rs` | 算子模板 `resize_bilinear2!`（追加在 `upsample2!` 之后） |
++| `Cargo.toml` / `src/lib.rs` | 独立 example crate（自带 `[workspace]`，不影响 calBLAS 主工作区） |
++| `src/kernels.rs` | 尺寸特化：32×32×16 ⇒ 64×64×16 |
++| `src/step.rs` | 整步程序：`in_x`/`out_y` 两个 decl + `#[npu::program]` 调 kernel |
++| `verify.sh` | WSL 内一键：设备遍编译 → `docc calbin from-calvx` → `docc calbin doctor` → 反汇编/查看 ELF |
++
++## 编译 / 打包（WSL，工具链已安装）
++
++```bash
++cd ~/calBLAS
++cargo build --manifest-path examples/resize_probe/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++# => examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvx / .cvxo
++
++rm -rf /tmp/resize_pkg /tmp/resize_cal && mkdir -p /tmp/resize_pkg
++cp examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvx /tmp/resize_pkg/step.cvx
++: > /tmp/resize_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/resize_pkg -o /tmp/resize_cal
++docc calbin doctor /tmp/resize_cal        # 期望：拒收 0 条
++```
++
++## 已验证（本机 WSL2，2026-11-13）
++
++- ✅ 设备遍编译：`cargo build ... --target dopamine-unknown-none-cvx` 成功（rustc 1.98.1-calculet）
++- ✅ `docc calbin from-calvx` 成功：产出 2 个 CCU ELF（ccu0 19,560 B / ccu1 6,872 B）+ CPU 命令流
++- ✅ `docc calbin doctor`：**拒收 0 条，exit 0**（2 条 ping/pong 地址警告，见下）
++- ✅ 确定性：同一输入两次 `docc` 构建，calbin 逐字节相同（`docc calbin diff` 报「一致」）
++- ✅ CCU ELF 反汇编：2849 条指令全部可识别（0 unknown，每个字节都被覆盖）；`docc elf ccu view` 显示 `load_size = 14608 = .text + .nops + .rodata` 各节之和
++- ✅ CPU 参考：按 kernel 运算次序的 f32 结果与独立 float64 数学参照在全部 65,536 个输出上 bf16 舍入 100% 一致
++
++## ❌ 本机无法验证（缺少条件）
++
++- **没有 `cvx` 模拟器**（calvxus 不在赛题三个仓库，工具链也不带），也没有 NPU 真机（`dort overview` 报「未发现 Calculet 设备」）
++  ⇒ **数值/真机行为尚未验证**；`input_32x32x16_bf16.bin` / `expected_64x64x16_bf16.bin` 已生成，有板即可跑：
++
++```bash
++dort calbin run -i 0 -f /tmp/resize_cal -m resize_pkg \
++  --raw-in input_32x32x16_bf16.bin --raw-out out.bin \
++  --in-tensor in_x --out-tensor out_y
++# 比较 out.bin 与 expected_64x64x16_bf16.bin（都是 bf16 原始位型，64×64×16）
++```
++
++## 已知限制 / 后续
++
++1. **单核**（`cores = 1`）：为绕开 docc 的「for 体内带结果 if 不支持」限制，采用单核 + 三段展开；后续可做 cores=2 版本（按行分核，需避开 clamp 条件分支）。
++2. `docc` 的两条 ping/pong 地址警告：`mem.decl` 已标 `double_buffer`，但 docc 对「程序不切换 ping/pong」的场景仍把两份分到同一地址（仅警告，doctor 通过）；不影响单次推理。
++3. `docc elf kabi` 对该 kernel 报 `calt-bind` 错误（docc 自己的诊断也说「多半是 docc 自己的缺陷」）；`docc calbin from-calvx` 路线不受影响。
++4. 目前只支持 **×2、NHWC、C ≤ 128**；任意尺寸 / 任意倍率 / NCHW / 进 calDNN 图（Engine 注册）是下一步。
++5. 性能未测（无板）；单核 + 每行重复计算 3 行，优化空间明确（行流水复用可减少 2/3 的行内插值计算）。
+diff --git a/examples/resize_probe/src/kernels.rs b/examples/resize_probe/src/kernels.rs
+new file mode 100755
+index 0000000..9af8df3
+--- /dev/null
++++ b/examples/resize_probe/src/kernels.rs
+@@ -0,0 +1,2 @@
++//! resize_bilinear2 的尺寸特化：32×32×16 bf16 ⇒ 64×64×16 bf16（NHWC、align_corners=False）。
++calblas::resize_bilinear2!(pub resize_bilinear2: h = 32, w = 32, c = 16);
+diff --git a/examples/resize_probe/src/lib.rs b/examples/resize_probe/src/lib.rs
+new file mode 100755
+index 0000000..919f0ab
+--- /dev/null
++++ b/examples/resize_probe/src/lib.rs
+@@ -0,0 +1,7 @@
++//! resize 探针 example：一个 CalVX 程序只跑 `resize_bilinear2`，输入/输出由主机按 decls 写入/读回。
++#![no_std]
++
++pub mod kernels;
++
++#[cfg(feature = "step")]
++mod step;
+diff --git a/examples/resize_probe/src/step.rs b/examples/resize_probe/src/step.rs
+new file mode 100755
+index 0000000..dfee889
+--- /dev/null
++++ b/examples/resize_probe/src/step.rs
+@@ -0,0 +1,12 @@
++//! 整个程序：静态存储 + 入口（`cargo build --features step --target dopamine-unknown-none-cvx` 出一份 `.cvx`）。
++use crate::kernels::*;
++
++npu::decls! {
++    in_x: input, bytes = 32768, double_buffer;      // 32*32*16*2
++    out_y: output, bytes = 131072, double_buffer;   // 64*64*16*2
++}
++
++#[npu::program(chiplets = 1, cores = 1)]
++pub fn step() {
++    resize_bilinear2(in_x().cast(), out_y().cast());
++}
+diff --git a/examples/resize_probe/verify.sh b/examples/resize_probe/verify.sh
+new file mode 100755
+index 0000000..777bfac
+--- /dev/null
++++ b/examples/resize_probe/verify.sh
+@@ -0,0 +1,38 @@
++#!/bin/bash
++# Rebuild + package + doctor for the resize_bilinear2 probe example (run inside WSL).
++# Usage: bash examples/resize_probe/verify.sh   (cwd = calBLAS 仓库根，工具链 channel=calculet)
++set -uo pipefail
++export PATH=/root/.cargo/bin:$PATH
++export RUSTUP_HOME=${RUSTUP_HOME:-/root/.rustup}
++export CARGO_HOME=${CARGO_HOME:-/root/.cargo}
++cd "$(dirname "$0")/../.."
++
++echo "== 1) device pass build =="
++cargo build --manifest-path examples/resize_probe/Cargo.toml --lib --features step \
++  --target dopamine-unknown-none-cvx
++CVX=examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvx
++CVXO=examples/resize_probe/target/dopamine-unknown-none-cvx/npu/resize_probe.cvxo
++ls -la "$CVX" "$CVXO"
++
++echo "== 2) docc calbin from-calvx =="
++rm -rf /tmp/resize_pkg /tmp/resize_cal
++mkdir -p /tmp/resize_pkg
++cp "$CVX" /tmp/resize_pkg/step.cvx
++: > /tmp/resize_pkg/param_blk0.bin
++docc calbin from-calvx /tmp/resize_pkg -o /tmp/resize_cal
++
++echo "== 3) docc calbin doctor（期望：拒收 0 条，exit 0） =="
++docc calbin doctor /tmp/resize_cal
++echo "doctor exit=$?"
++
++echo "== 4) CCU ELF =="
++ls -la /tmp/resize_cal/resize_pkg/*.elf
++docc elf ccu view /tmp/resize_cal/resize_pkg/ccu0_chip0.elf | head -12
++
++echo "== 5) 真机（有板时，主机侧） =="
++cat <<'EOF'
++dort calbin run -i 0 -f /tmp/resize_cal -m resize_pkg \
++  --raw-in input_32x32x16_bf16.bin --raw-out out.bin \
++  --in-tensor in_x --out-tensor out_y
++# 然后把 out.bin 与 reference.py 生成的 expected_64x64x16_bf16.bin 逐元素比较
++EOF
+diff --git a/src/kernels/vision.rs b/src/kernels/vision.rs
+index 0e3bbf2..f4b00b6 100644
+--- a/src/kernels/vision.rs
++++ b/src/kernels/vision.rs
+@@ -739,3 +739,103 @@ macro_rules! spatial_attn {
+         $r16.reduce(Combine::$kind, $m16, 1);
+     }};
+ }
++
++/// 双线性上采样 ×2（NHWC、无边框，bf16）：输入 x `[H][W][C]` ⇒ 输出 y `[2H][2W][C]`。
++///
++/// 语义 = `torch.nn.functional.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)`
++/// 的 2× 情形：输出像素 (oy, ox) 的源坐标 `u = (ox + 0.5) / 2 - 0.5`，边缘 clamp 到 `[0, W-1] / [0, H-1]`。
++/// 中间按 f32 计算（每一步 mul/add 各舍一次），最后一次性 RNE 舍回 bf16；权重只有 0.25 / 0.75（编译期常数）。
++/// 约束：`C <= 128`（f32 中间 cache 一行 `C*4 B <= 512 B`），`H, W >= 3`，尺寸均为编译期常量。
++///
++/// 实现要点：**无运行时条件分支**（docc 的 calvx-to-calt 目前不收「for 体里带结果的 if」）——
++/// 第 0 行、中间行（`for iy in 1..H-1`，边界都是常量）、最后一行三段展开，行号 clamp 直接写成常量/线性表达式。
++#[macro_export]
++macro_rules! resize_bilinear2 {
++    ($vis:vis $name:ident: h = $h:expr, w = $w:expr, c = $c:expr) => {
++        #[npu::kernel(numerics = "ks1")]
++        $vis fn $name(x: npu::Ptr<npu::Ddr, npu::bf16>, y: npu::Ptr<npu::Ddr, npu::bf16>) {
++            const H: usize = $h;
++            const W: usize = $w;
++            const C: usize = $c;
++            const _: () = assert!(H >= 3 && W >= 3, "resize_bilinear2：H、W 至少 3（第 0 行/最后一行单独展开）");
++            const _: () = assert!(C > 0 && C <= 128, "resize_bilinear2：C 必须 1..=128（f32 中间 cache 一行 ≤ 512 B）");
++
++            // 第 0 行：输出行 0/1 用输入行 (0, 0, 1)
++            $crate::resize_bilinear2!(@pair x, y, $h, $w, $c, 0, 0, 1);
++            // 中间行：输入行 (iy-1, iy, iy+1)
++            for iy in 1..H - 1 {
++                $crate::resize_bilinear2!(@pair x, y, $h, $w, $c, iy - 1, iy, iy + 1);
++            }
++            // 最后一行：输出行 2H-2/2H-1 用输入行 (H-2, H-1, H-1)
++            $crate::resize_bilinear2!(@pair x, y, $h, $w, $c, $h - 2, $h - 1, $h - 1);
++        }
++    };
++
++    // 处理一个「输入行 iy」对应的两条输出行（2iy、2iy+1），ia/ic 是上下邻行（已按边界 clamp 好的常量/线性表达式）。
++    (@pair $x:ident, $y:ident, $h:expr, $w:expr, $c:expr, $ia:expr, $iy:expr, $ic:expr) => {{
++        use npu::prelude::*;
++        const H: usize = $h;
++        const W: usize = $w;
++        const C: usize = $c;
++        const WO: usize = 2 * W;
++        let gx = $x.bind_strided::<npu::Read, 3>([H, W, C], [W * C, C, 1]);
++        // 输出四个相位（行 2iy+a、列 2j+b）：视图行距 2C，行 r 对应输出像素 2r；起点偏 a*WO*C + b*C
++        let g00 = $y.add((0 * WO + 0) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        let g01 = $y.add((0 * WO + 1) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        let g10 = $y.add((1 * WO + 0) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        let g11 = $y.add((1 * WO + 1) * C * 2).bind_strided::<npu::Write, 2>([H * WO, C], [2 * C, 1]);
++        // 三行输入（bf16 与 f32 各一份）+ 六条行内插值结果 + 两条输出 + 临时
++        let (ab, bb, cb) = (vcache::<bf16, _>([W, C]), vcache::<bf16, _>([W, C]), vcache::<bf16, _>([W, C]));
++        let (af, bf, cf) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (he_a, ho_a) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (he_b, ho_b) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (he_c, ho_c) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (oe, oo) = (vcache::<f32, _>([W, C]), vcache::<f32, _>([W, C]));
++        let (ob, t) = (vcache::<bf16, _>([W, C]), vcache::<f32, _>([W, C]));
++        ab.load(gx.sub([$ia, 0, 0], [1, W, C]));
++        bb.load(gx.sub([$iy, 0, 0], [1, W, C]));
++        cb.load(gx.sub([$ic, 0, 0], [1, W, C]));
++        af.cvt(ab, Cvt::default());
++        bf.cvt(bb, Cvt::default());
++        cf.cvt(cb, Cvt::default());
++        $crate::resize_bilinear2!(@h af, he_a, ho_a, t, W);
++        $crate::resize_bilinear2!(@h bf, he_b, ho_b, t, W);
++        $crate::resize_bilinear2!(@h cf, he_c, ho_c, t, W);
++
++        // 输出行 2iy = 0.25*row(iy-1) + 0.75*row(iy)
++        oe.mul(he_a, 0.25f32);
++        t.mul(he_b, 0.75f32);
++        oe.add(oe, t);
++        ob.cvt(oe, Cvt::default());
++        ob.store(g00.sub([$iy * WO, 0], [W, C]));
++        oo.mul(ho_a, 0.25f32);
++        t.mul(ho_b, 0.75f32);
++        oo.add(oo, t);
++        ob.cvt(oo, Cvt::default());
++        ob.store(g01.sub([$iy * WO, 0], [W, C]));
++
++        // 输出行 2iy+1 = 0.75*row(iy) + 0.25*row(iy+1)
++        oe.mul(he_b, 0.75f32);
++        t.mul(he_c, 0.25f32);
++        oe.add(oe, t);
++        ob.cvt(oe, Cvt::default());
++        ob.store(g10.sub([$iy * WO, 0], [W, C]));
++        oo.mul(ho_b, 0.75f32);
++        t.mul(ho_c, 0.25f32);
++        oo.add(oo, t);
++        ob.cvt(oo, Cvt::default());
++        ob.store(g11.sub([$iy * WO, 0], [W, C]));
++    }};
++
++    // 行内双线性：he[x] = 0.75*f[x] + 0.25*f[x-1]（x=0 用 f[0]）；ho[x] = 0.75*f[x] + 0.25*f[x+1]（x=W-1 用 f[W-1]）
++    (@h $f:ident, $he:ident, $ho:ident, $t:ident, $w:expr) => {{
++        $he.mul($f, 0.75f32);
++        $t.rows(0, $w - 1).mul($f.rows(0, $w - 1), 0.25f32);
++        $he.rows(1, $w - 1).add($he.rows(1, $w - 1), $t.rows(0, $w - 1));
++        $he.rows(0, 1).copy($f.rows(0, 1));
++        $ho.mul($f, 0.75f32);
++        $t.rows(0, $w - 1).mul($f.rows(1, $w - 1), 0.25f32);
++        $ho.rows(0, $w - 1).add($ho.rows(0, $w - 1), $t.rows(0, $w - 1));
++        $ho.rows($w - 1, 1).copy($f.rows($w - 1, 1));
++    }};
++}
