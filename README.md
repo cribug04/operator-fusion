@@ -104,4 +104,4 @@ DEVICE=0 CAL_ROOT=$PWD/onboard_cal CASE_DIR=$PWD/cases OUT=$PWD/board_out bash r
 
 ## 本地复现与验收更新
 
-Jax 的环境与部署记录见 [JAX_LOCAL_SETUP.md](docs/JAX_LOCAL_SETUP.md)。测试工具修复、21 项回归测试及两组 Resize CPU 数据复核结果见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。这些本地结果不等于 NPU 真机验证。
+Jax 的环境与部署记录见 [JAX_LOCAL_SETUP.md](docs/JAX_LOCAL_SETUP.md)。测试工具修复、40 项回归测试（含 19 项 Resize CPU 边界测试）及两组 Resize CPU 数据复核结果见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。这些本地结果不等于 NPU 真机验证。
