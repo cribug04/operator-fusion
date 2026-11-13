@@ -1,0 +1,79 @@
+diff --git a/src/graph.rs b/src/graph.rs
+index 6a9da24..f0a40aa 100644
+--- a/src/graph.rs
++++ b/src/graph.rs
+@@ -401,6 +401,25 @@ pub struct HwptnDesc {
+     pub n: u32,
+ }
+ 
++/// 空间插值方式。
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Interp {
++    /// 最近邻（复制像素）
++    Nearest,
++    /// 双线性，`align_corners = false`，边缘 clamp（torch `interpolate(mode = "bilinear")`）
++    Bilinear,
++}
++
++/// 整数倍上采样：一张 NHWC 紧排的图 `[h][w][c]` ⇒ `[scale·h][scale·w][c]`（bf16，无边框）。
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct ResizeDesc {
++    pub h: u32,
++    pub w: u32,
++    pub c: u32,
++    pub scale: u32,
++    pub mode: Interp,
++}
++
+ /// 运算：形状描述 + 读写的张量号。
+ #[derive(Clone, Copy, Debug, PartialEq)]
+ pub enum Op {
+@@ -448,6 +467,8 @@ pub enum Op {
+     Transfer(TransferDesc, [Uid; 2]),
+     /// x、y
+     Hwptn(HwptnDesc, [Uid; 2]),
++    /// x `[h][w][c]`、y `[scale·h][scale·w][c]`
++    Resize(ResizeDesc, [Uid; 2]),
+ }
+ 
+ /// 一个权重矩阵（或 MoE 的 mats 个同形矩阵）的张量与形状。
+@@ -569,6 +590,24 @@ impl Graph {
+         y
+     }
+ 
++    /// 整数倍上采样：x 是 NHWC 紧排的图 `[h, w, c]`（三维张量）⇒ y `[scale·h, scale·w, c]`。
++    ///
++    /// # Panics
++    /// x 不是三维时 panic（图的规格错误，不是运行时条件）。
++    pub fn resize(&mut self, x: Uid, scale: u32, mode: Interp) -> Uid {
++        let dims = &self[x].dims;
++        assert!(dims.len() == 3, "resize：x 要是 [h, w, c] 三维的图");
++        let (h, w, c) = (dims[0], dims[1], dims[2]);
++        let y = self.tmp(&[scale * h, scale * w, c]);
++        self.op(Op::Resize(ResizeDesc { h, w, c, scale, mode }, [x, y]));
++        y
++    }
++
++    /// 双线性 ×2（`align_corners = false`）：[`Self::resize`] 的常用特例。
++    pub fn upsample_bilinear2(&mut self, x: Uid) -> Uid {
++        self.resize(x, 2, Interp::Bilinear)
++    }
++
+     /// 旋转位置编码（原地，返回 x）：头维 `head`；角度表 [rows, half]；位置（i32）只读第一路。
+     pub fn rope(&mut self, x: Uid, table: Uid, pos: Uid, head: u32) -> Uid {
+         self.rope_at(x, table, pos, head, 0, false)
+diff --git a/src/lib.rs b/src/lib.rs
+index 4bbb643..f3b3a2b 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -18,8 +18,8 @@ mod plan;
+ 
+ pub use engine::{Engine, FirstFit, Heuristic, Notes, Step};
+ pub use graph::{
+-    Blocks, Collective, CompressDesc, Compressed, Compressor, ConvDesc, DeltanetDesc, Elem, EmbeddingDesc, F32, Graph, HcDesc, HcKind, HwptnDesc, LightningIndexDesc, MatmulDesc,
+-    MoeDenseDesc, MoeGatePostDesc, MoeGatePreDesc, MoeGluDesc, NormDesc, NormKind, Op, Pw, PwDesc, Quant, RopeDesc, Router, ScatterKvDesc, Score, SdpaDesc, SharedGatedAddDesc,
++    Blocks, Collective, CompressDesc, Compressed, Compressor, ConvDesc, DeltanetDesc, Elem, EmbeddingDesc, F32, Graph, HcDesc, HcKind, HwptnDesc, Interp, LightningIndexDesc, MatmulDesc,
++    MoeDenseDesc, MoeGatePostDesc, MoeGatePreDesc, MoeGluDesc, NormDesc, NormKind, Op, Pw, PwDesc, Quant, ResizeDesc, RopeDesc, Router, ScatterKvDesc, Score, SdpaDesc, SharedGatedAddDesc,
+     SinkAttnDesc, SparseIndexDesc, SparseSdpaDesc, TensorDesc, TransferDesc, Uid, Weight,
+ };
+ pub use job::{Arg, Job};

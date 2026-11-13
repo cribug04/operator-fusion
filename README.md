@@ -13,10 +13,12 @@
 | [`docs/CALCULET_RECON.md`](docs/CALCULET_RECON.md) | 仓库勘察报告：环境/工具链实测、算子覆盖、docc/dort 真实用法、真机测试证据、缺失算子与选题建议、48h 分工 |
 | [`docs/RESIZE_OPERATOR.md`](docs/RESIZE_OPERATOR.md) | **Resize 算子交付说明**：语义、代码位置、构建/打包/验证数据、真机步骤、已知限制 |
 | [`docs/OPTIMIZATION_CANDIDATES.md`](docs/OPTIMIZATION_CANDIDATES.md) | **还能优化什么**：按 ROI 排序的算子/框架优化清单 + 本轮落地的两项 |
+| [`docs/CALDNN_INTEGRATION.md`](docs/CALDNN_INTEGRATION.md) | **Resize 接入 calDNN 图 / 引擎表**：`ResizeDesc` + `Op::Resize` + `Graph::resize` + calBLAS `Resize` 引擎 + 探针引擎表；主机侧编排/bind 演示与 5 项测试；未发射 |
 | [`docs/REAL_DEVICE_VERIFICATION.md`](docs/REAL_DEVICE_VERIFICATION.md) | **真机验证操作手册**（逐条命令、判定标准、排错表、记录模板） |
 | [`kernels/`](kernels/) | 3 个新宏的源码（与补丁内容一致，便于审阅） |
 | [`examples/`](examples/) | 4 个可直接编译的探针程序（独立 workspace，不污染 calBLAS 主工作区） |
-| [`patches/onboard_kit.patch`](patches/onboard_kit.patch) | 应用到 calBLAS 的完整补丁（`vision.rs` 3 宏 + 4 个 example） |
+| [`patches/onboard_kit.patch`](patches/onboard_kit.patch) | 应用到 calBLAS 的完整补丁（`vision.rs` 3 宏 + `engines.rs` Resize 引擎 + 4 个 example 与引擎表、`resize-plan` 主机演示） |
+| [`patches/caldnn_resize.patch`](patches/caldnn_resize.patch) | 应用到 calDNN 的补丁：`Interp` / `ResizeDesc` / `Op::Resize` / `Graph::resize` |
 | [`onboard/`](onboard/) | 真机验证工具包：打包、上板、bf16 对比、数据生成；`cases/` 含已生成的输入/期望数据 |
 | [`evidence/`](evidence/) | 平台侧验证证据：`.cvx/.cvxo`、calbin（含 CCU ELF）、doctor 日志、反汇编摘要、确定性 sha256 |
 
@@ -26,7 +28,7 @@
 
 | 名称 | 功能 | 状态 |
 | --- | --- | --- |
-| `resize_bilinear2` | **双线性上采样 ×2**（NHWC bf16，`align_corners=False`，边缘 clamp；f32 中间计算 + RNE 舍 bf16）；`[H][W][C] → [2H][2W][C]` | ✅ 编译 / docc calbin / doctor / 确定性 / 反汇编 / CPU 参考全过；❌ 真机数值待板 |
+| `resize_bilinear2` | **双线性上采样 ×2**（NHWC bf16，`align_corners=False`，边缘 clamp；f32 中间计算 + RNE 舍 bf16）；`[H][W][C] → [2H][2W][C]` | ✅ 编译 / docc calbin / doctor / 确定性 / 反汇编 / CPU 参考全过；✅ 已注册进 calDNN 图与引擎表（主机侧编排通过，未发射）；❌ 真机数值待板 |
 | `resize_bilinear2_tiled` | 同上，**通道分块版**：按 `CC` 把 C 切块，支持大 C（实测 C=256；原版上限 C≤128） | ✅ 同上（C=256 全链路通过） |
 | `conv2d_s2_fast`（实验） | **3×3、stride=2 卷积 + bias + SiLU** 的 FAST 路原型：偶/奇像素各一份 VB cache，让 tap 的 lhs 都成为连续 16 行；用于补齐 `conv2d!` 只对 `S==1` 开 FAST 的缺口 | ✅ 编译 / docc calbin / doctor / 反汇编；❌ 数值与性能待板；**未合入共享 `conv2d!`**（不影响现有模型），配同形状慢路对照 [`examples/conv2d_s2_ref`](examples/conv2d_s2_ref) |
 
@@ -49,8 +51,11 @@
 
 ```bash
 for r in calBLAS calDNN npu; do git clone http://115.159.82.89/git/calculet/$r.git; done
+cd calDNN && git apply /path/to/patches/caldnn_resize.patch && cd ..
+# 期望：M src/graph.rs src/lib.rs（Interp / ResizeDesc / Op::Resize / Graph::resize）
 cd calBLAS && git apply /path/to/patches/onboard_kit.patch
-# 期望：M src/kernels/vision.rs；新增 examples/resize_probe{,_big}/、examples/conv2d_s2_{probe,ref}/
+# 期望：M src/kernels/vision.rs src/engines.rs；新增 examples/resize_probe{,_big}/、examples/conv2d_s2_{probe,ref}/
+# 图接入演示（主机侧，不上板）：cd examples/resize_probe && cargo run -p resize-plan && cargo test -p resize-plan
 ```
 
 ### 3.2 编译 + docc 打包（Linux + calculet 工具链）
@@ -104,4 +109,4 @@ DEVICE=0 CAL_ROOT=$PWD/onboard_cal CASE_DIR=$PWD/cases OUT=$PWD/board_out bash r
 
 ## 本地复现与验收更新
 
-Jax 的环境与部署记录见 [JAX_LOCAL_SETUP.md](docs/JAX_LOCAL_SETUP.md)。测试工具修复、40 项回归测试（含 19 项 Resize CPU 边界测试）及两组 Resize CPU 数据复核结果见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。这些本地结果不等于 NPU 真机验证。
+Jax 的环境与部署记录见 [JAX_LOCAL_SETUP.md](docs/JAX_LOCAL_SETUP.md)。测试工具修复、40 项回归测试（含 19 项 Resize CPU 边界测试）及两组 Resize CPU 数据复核结果见 [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md)。Resize 接入 calDNN 图与引擎表的改动、演示输出和测试见 [CALDNN_INTEGRATION.md](docs/CALDNN_INTEGRATION.md)。这些本地结果不等于 NPU 真机验证。

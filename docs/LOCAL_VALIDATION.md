@@ -74,7 +74,7 @@ bash -n onboard/package_all.sh
 - [x] 修复验收工具，确认失败不会被当作成功。
 - [x] 复核两个 Resize 已存用例的 CPU 数据。
 - [x] 扩充 Resize 边界测试：常量、脉冲、渐变、负值、边缘 clamp、通道块边界及不同合法形状（2026-11-14，见下文「Resize CPU 边界测试」）。
-- [ ] 阅读实际 calDNN 接口，选择一个 Resize 算子完成图与引擎注册；需要访问同版本 calDNN 源码，不能猜 API。
+- [x] 阅读实际 calDNN 接口，完成 Resize 的图与引擎注册（2026-11-14，见 [CALDNN_INTEGRATION.md](CALDNN_INTEGRATION.md)）；主机侧编排通过，未发射。
 - [ ] 复核卷积原型地址映射与 CPU 数据布局。
 - [ ] 准备展示：输入/输出尺寸、实现思路、已有验证和待验证项。性能位置暂留空。
 
