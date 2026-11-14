@@ -1,0 +1,58 @@
+.config
+    $0 = #calvx.program{
+        version = #calvx.version{1, 0},
+        entry = @step,
+        chiplets = 1,
+        numeric = #calvx.numeric_env{rounding_mode = rne},
+        invocations = [#calvx.invocation{id = 0, callee = @step, cores = 2, after = []:i64}]
+    }
+    $1 = #calvx.numeric_env{rounding_mode = rnu, finite_only = true}
+.endconfig
+.module
+.attr calvx.program = $0
+    mem.decl     in_raw, input, 4096
+    mem.decl     out_raw, output, 64
+    .func step()
+    .reg  r0, r1: index
+    .reg  r2: i1
+    .reg  r3, r4: ptr ddr
+        sys.query    r0 = core_rank
+        s.constant   r1 = 0:index
+        s.cmp        r2 = r0, r1, eq
+        if           r2
+        .region
+            mem.addr     r3 = @in_raw
+            mem.addr     r4 = @out_raw
+            call         r3, r4, @window_energy
+            yield
+        .end
+        .region
+            yield
+        .end
+        barrier.core.sync
+        return
+    .endfunc
+    .func window_energy(r0: ptr ddr, r1: ptr ddr)
+    .attr npu.kernel = unit
+    .reg  r2, r3: vcache f32[16,64]
+    .reg  r4: vcache f32[16,1]
+    .reg  r5: vcache f32[1,16]
+    .reg  r6: view ddr f32[16,64] read
+    .reg  r7: f32
+    .reg  r8: view ddr f32[1,16] write
+        vec.cache    r2
+        vec.cache    r3
+        vec.cache    r4
+        vec.cache    r5
+        view.bind_ptr r6 = r0
+        vec.load     r2, r6
+        vec.mul      r3, r2, r2, _, $1
+        vec.reduce   r4, r3, sum, 1, $1
+        s.constant   r7 = 0.015625:f32
+        vec.mul      r4, r4, r7, _, $1
+        vec.reshape  r5, r4
+        view.bind_ptr r8 = r1
+        vec.store    r8, r5
+        return
+    .endfunc
+.endmodule

@@ -1,0 +1,683 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index fcd5808..8d4e869 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -82,6 +82,15 @@ dependencies = [
+  "npu",
+ ]
+ 
++[[package]]
++name = "fused_norm"
++version = "0.1.0"
++dependencies = [
++ "calblas",
++ "caldnn",
++ "npu",
++]
++
+ [[package]]
+ name = "half"
+ version = "2.7.1"
+diff --git a/Cargo.toml b/Cargo.toml
+index 80316a9..dc7a084 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -14,4 +14,4 @@ caldnn = { path = "../calDNN", version = "0.1.0", registry = "calculet" }
+ npu = { path = "../npu", version = "0.1.0", registry = "calculet" }
+ 
+ [workspace]
+-members = [".", "examples/qwen38_27b", "examples/qwen36_35b_a3b", "examples/qwen36_35b_a3b_16chip", "examples/qwen36_35b_a3b_16chip/pack", "examples/qwen35_397b_a17b", "examples/minimax_m31_flash", "examples/minimax_h3", "examples/minimax_h3/text", "examples/minimax_h3/vae", "examples/deepseek_v4_flash", "examples/deepseek_v41_flash/model", "examples/deepseek_v41_flash/tp16", "examples/deepseek_qwen7b", "examples/qwen3_8b", "examples/phi4", "examples/laya", "examples/d3_turbo", "examples/d3_turbo/pack", "examples/yolo26", "examples/minicpm_v47", "examples/tiny", "examples/tiny/pack", "examples/vuprobe"]
++members = [".", "examples/qwen38_27b", "examples/qwen36_35b_a3b", "examples/qwen36_35b_a3b_16chip", "examples/qwen36_35b_a3b_16chip/pack", "examples/qwen35_397b_a17b", "examples/minimax_m31_flash", "examples/minimax_h3", "examples/minimax_h3/text", "examples/minimax_h3/vae", "examples/deepseek_v4_flash", "examples/deepseek_v41_flash/model", "examples/deepseek_v41_flash/tp16", "examples/deepseek_qwen7b", "examples/qwen3_8b", "examples/phi4", "examples/laya", "examples/d3_turbo", "examples/d3_turbo/pack", "examples/yolo26", "examples/minicpm_v47", "examples/tiny", "examples/tiny/pack", "examples/vuprobe", "examples/fused_norm"]
+diff --git a/examples/fused_norm/Cargo.toml b/examples/fused_norm/Cargo.toml
+new file mode 100644
+index 0000000..fad8851
+--- /dev/null
++++ b/examples/fused_norm/Cargo.toml
+@@ -0,0 +1,17 @@
++[package]
++name = "fused_norm"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[lib]
++crate-type = ["rlib"]
++
++[features]
++step = []
++split = ["step"]
++
++[dependencies]
++calblas = { path = "../.." }
++caldnn = { path = "../../../calDNN" }
++npu = { path = "../../../npu" }
+diff --git a/examples/fused_norm/README.md b/examples/fused_norm/README.md
+new file mode 100644
+index 0000000..d2abfd7
+--- /dev/null
++++ b/examples/fused_norm/README.md
+@@ -0,0 +1,109 @@
++# 题一：融合残差加法与 RMSNorm（`add_rms_norm`）
++
++把 `s = a + b`（残差，后面几层还要用）与 `y = rms_norm(s) · w` 合成一个 kernel：`s` 加完留在 vcache 里直接用，
++不再走一趟 DDR 读回。
++
++## 改了什么
++
++| 位置 | 内容 |
++| --- | --- |
++| `src/kernels/norm.rs` | 新增 `calblas::add_rms_norm!` 模板；逐句复用 `rms_norm!` 的归一步骤，只在前面多读一个输入、加一次、写一次残差 |
++| `src/engines.rs` | 新增 `FusedNormDesc` 与融合引擎 `AddRmsNorm`：一条 `Step { covers: 2 }` 认下图里**相邻**的 `Pointwise(Add)` 与 `Norm(Rms)` |
++| `examples/fused_norm/` | 特化（`rows = 4, n = 4096, eps = 1e-6`，对齐 `examples/qwen3_8b` 的多 token prefill）、引擎表、图、测试与演示 |
++
++数值上融合与两步**逐步同序**：bf16 加一次、`sum → ×1/n → +eps → bf16 → rsqrt.approx → ×w` 的顺序完全一致，
++因此预期两版设备输出逐位一致，需在真机上分别与 CPU 参考比较，再检验两版输出是否逐位一致。
++
++## 跑法
++
++```bash
++cd calBLAS
++
++# 设备遍：出 CalVX（.cvx 可读汇编 / .cvxo 目标文件）
++cargo build -p fused_norm --lib --target dopamine-unknown-none-elf
++ls target/dopamine-unknown-none-elf/npu/        # fused_norm.cvx、fused_norm.cvxo
++
++# 主机遍：编排两种方案、打印作业与搬运量
++cargo run -p fused_norm
++
++# 测试
++cargo test -p fused_norm
++```
++
++## 已验证的结果
++
++设备遍产出的 `fused_add_rms_norm` 序列（`fused_norm.cvx`）：`vec.load a → vec.load b → vec.add → vec.store res →
++vec.mul(s,s) → q.cvt f32 → vec.reduce ×2 → ×1/n → +eps → q.cvt bf16 → q.rsqrt.approx → vec.mul → vec.load w → vec.mul → vec.store y`。
++
++主机遍（`cargo run -p fused_norm`，4×4096 bf16，每张矩阵 32 KiB）：
++
++```
++图：5 个张量、2 个运算（[4 × 4096] bf16，每张矩阵 32 KiB）
++
++融合：1 个作业，工作区 DDR 32768 B、SRAM 0 B
++  fused_add_rms_norm(%0, %1, %2, %3, %4)
++
++两步：2 个作业，工作区 DDR 32768 B、SRAM 0 B
++  residual_add(%0, %1, %3)
++  hidden_rms_norm(%3, %2, %4)
++
++一趟 DDR 搬运（不含主机读写）：融合 139264 B、两步 172032 B ⇒ 融合省 32768 B（19.0%）
++```
++
++测试 6 个全过：融合成 1 个作业且参数次序正确、不融合时是 2 个作业、eps 不匹配或权重缺失、长度错误时引擎拒绝融合、
++归一化输入不是残差时不融合和图形状。
++
++## 已知限制
++
++- 特化表只有 `rows = 4, n = 4096, eps = 1e-6` 一档；换形状要再加一条（`add_rms_norm!` + `FusedNormDesc`）。
++- 只认 `NormKind::Rms`、不带偏置；`Pointwise` 必须是 `Add`，且归一化直接吃残差那个中间张量。
++- 残差仍写 DDR（后续层要用），省下的是归一化再读一遍的那 32 KB 和一次作业发射。
++- 融合引擎必须排在 `Binary` / `RmsNorm` 之前，`FirstFit` 才先试它（见 `examples/fused_norm/src/engines.rs`）。
++
++## 上板验收
++
++两份 CalBin 均使用 1 个芯粒和 2 个核。现有 kernel 由 0 号核执行，两版用同一个程序入口和屏障。
++输入和输出均为小端 BF16 连续数组。
++
++| 张量 | 所属缓冲区 | 字节偏移 | 大小 |
++| --- | --- | ---: | ---: |
++| a | in_raw | 0 | 32768 |
++| b | in_raw | 32768 | 32768 |
++| w | in_raw | 65536 | 8192 |
++| residual | out_raw | 0 | 32768 |
++| y | out_raw | 32768 | 32768 |
++
++在仓库根目录生成两份 CalBin 和测试输入。输出目录应是一个新目录。
++
++```bash
++export PATH=/root/.cargo/bin:$PATH
++bash examples/fused_norm/pack.sh ./board
++```
++
++上板时进入产物目录，选择分配给团队的设备下标。随产物附带 `verify.py`。
++
++```bash
++device=0
++dort device -i "$device"
++for variant in fused split; do
++    dort calbin run -i "$device" -f "$variant/cal" -m "$variant" \
++      --in-tensor in_raw --out-tensor out_raw \
++      --raw-in input.bin --raw-out "$variant.bin" || break
++done
++python3 verify.py check input.bin fused.bin split.bin
++```
++
++测试输入包含整行抵消、普通非零输入、全零输入和接近 eps 主导的低幅输入，权重包含正值、负值和零。
++验收脚本对两版分别检查残差 BF16 字节和独立 CPU RMSNorm 公式，再检查两版设备输出是否逐字节一致。
++CPU 公式在残差 BF16 舍入后用高精度计算，暂用相对容差 3.5% 或绝对容差 0.002。该阈值待现场核验，
++用于覆盖设备的 BF16 中间舍入与近似 rsqrt。
++
++### 性能记录
++
++4×4096 形状下，算子张量读写的静态估算为融合 139264 B、两步 172032 B。两版均写出 32768 B 的残差。
++主机图的内部工作区各 32768 B。上板程序直接将残差写到输出缓冲区，两版各使用 73728 B 输入及
++65536 B 输出。Plan 报告的 SRAM 工作区为 0 B。VB 峰值和实际 DDR 事务量待现场核验。
++
++现场用同一设备、相同输入和相同调用次数，先验正确性，再分别记录编译、加载、预热和稳态执行。
++`dort calbin run --raw-in` 用于验证单次调用，整个命令的耗时含部署和主机 I/O。
++稳态比较应在一次部署后重复推理，用板上计时记录重复次数、中位数和 P95。
+diff --git a/examples/fused_norm/pack.sh b/examples/fused_norm/pack.sh
+new file mode 100644
+index 0000000..695f9af
+--- /dev/null
++++ b/examples/fused_norm/pack.sh
+@@ -0,0 +1,25 @@
++#!/usr/bin/env bash
++set -euo pipefail
++dest=${1:?usage: bash examples/fused_norm/pack.sh NEW_OUTPUT_DIR}
++mkdir -- "$dest"
++dest=$(realpath "$dest")
++cd "$(dirname "$0")/../.."
++target=dopamine-unknown-none-cvx
++build_root=$(realpath -m "${CARGO_TARGET_DIR:-$PWD/target}/fused_norm_board")
++for variant in fused split; do
++    stage="$dest/$variant"
++    mkdir "$stage"
++    features=step
++    if [[ $variant == split ]]; then
++        features=split
++    fi
++    export CARGO_TARGET_DIR="$build_root/$variant"
++    cargo build -p fused_norm --lib --features "$features" --target "$target"
++    cp "$CARGO_TARGET_DIR/$target/npu/fused_norm.cvx" "$stage/step.cvx"
++    cp "$CARGO_TARGET_DIR/$target/npu/fused_norm.cvxo" "$stage/step.cvxo"
++    # docc 0.4.1 checks for this file even with --no-params.
++    touch "$stage/param_blk0.bin"
++    docc calbin from-calvx "$stage" --no-params --network "$variant" -o "$stage/cal"
++    dort calbin parse -f "$stage/cal" > "$stage/layout.txt"
++done
++python3 examples/fused_norm/verify.py generate "$dest"
+diff --git a/examples/fused_norm/src/engines.rs b/examples/fused_norm/src/engines.rs
+new file mode 100644
+index 0000000..cc81b43
+--- /dev/null
++++ b/examples/fused_norm/src/engines.rs
+@@ -0,0 +1,29 @@
++//! 引擎表：融合引擎排在单算子引擎前面，`FirstFit` 就会先让它试。
++
++use calblas::caldnn::{Engine, NormDesc, PwDesc};
++use calblas::engines::{AddRmsNorm, Binary, FusedNormDesc, RmsNorm};
++use npu::{bf16, Ddr, Launch, Ptr};
++
++use crate::kernels;
++use crate::model::{EPS, HIDDEN, ROWS};
++
++type Bf = Ptr<Ddr, bf16>;
++type FusedKernel = fn(Bf, Bf, Bf, Bf, Bf) -> Launch<(Bf, Bf, Bf, Bf, Bf)>;
++type Kernel3 = fn(Bf, Bf, Bf) -> Launch<(Bf, Bf, Bf)>;
++
++/// 融合引擎认的形状表。
++pub const FUSED_TABLE: &[(FusedNormDesc, FusedKernel)] =
++    &[(FusedNormDesc { rows: ROWS, n: HIDDEN, eps: EPS }, kernels::fused_add_rms_norm)];
++
++/// 对照组：单算子的两个引擎。
++pub const ADD_TABLE: &[(PwDesc, Kernel3)] = &[(kernels::residual_add::DESC, kernels::residual_add)];
++pub const NORM_TABLE: &[(NormDesc, Kernel3)] = &[(kernels::hidden_rms_norm::DESC, kernels::hidden_rms_norm)];
++
++pub static FUSED_ENGINE: AddRmsNorm<'static> = AddRmsNorm(FUSED_TABLE);
++pub static ADD_ENGINE: Binary<'static> = Binary(ADD_TABLE);
++pub static NORM_ENGINE: RmsNorm<'static> = RmsNorm(NORM_TABLE);
++
++/// 融合：一条作业认下两个运算。
++pub const FUSED: &[&dyn Engine] = &[&FUSED_ENGINE, &ADD_ENGINE, &NORM_ENGINE];
++/// 对照：不做融合，退回两个单算子引擎。
++pub const SPLIT: &[&dyn Engine] = &[&ADD_ENGINE, &NORM_ENGINE];
+diff --git a/examples/fused_norm/src/kernels.rs b/examples/fused_norm/src/kernels.rs
+new file mode 100644
+index 0000000..1e4ea48
+--- /dev/null
++++ b/examples/fused_norm/src/kernels.rs
+@@ -0,0 +1,6 @@
++//! 本例子用到的特化：融合 kernel 一个，对照组的两步（`binary!(add)` 与 `rms_norm!`）各一个。
++//! 尺寸取 Qwen3-8B 那种「4 个 token × 4096 隐藏维」——`examples/qwen3_8b` 里已有 `rows = 4, n = 4096` 的 rms_norm。
++
++calblas::add_rms_norm!(pub fused_add_rms_norm: rows = 4, n = 4096, eps = 1.0e-6);
++calblas::binary!(pub residual_add: add, n = 4 * 4096);
++calblas::rms_norm!(pub hidden_rms_norm: rows = 4, n = 4096, eps = 1.0e-6);
+diff --git a/examples/fused_norm/src/lib.rs b/examples/fused_norm/src/lib.rs
+new file mode 100644
+index 0000000..3b251e1
+--- /dev/null
++++ b/examples/fused_norm/src/lib.rs
+@@ -0,0 +1,98 @@
++//! 题一：融合残差加法与 RMSNorm。融合 kernel 与「先加再归一」逐步同序（bf16 加、舍一次），数值应逐位相同，
++//! 融合将残差留在 vcache 中继续归一化，省去残差的一次 DDR 读回。
++//!
++//! - [`kernels`]：融合 kernel 的尺寸特化（两遍都编）
++//! - [`engines`]：融合引擎表（主机遍）
++//! - [`model`]：一层的图（主机遍）
++#![cfg_attr(not(test), no_std)]
++
++pub mod kernels;
++
++#[cfg(all(feature = "step", target_arch = "riscv32", target_os = "none"))]
++mod step;
++
++#[cfg(not(all(target_arch = "riscv32", target_os = "none")))]
++pub mod engines;
++#[cfg(not(all(target_arch = "riscv32", target_os = "none")))]
++pub mod model;
++
++#[cfg(test)]
++extern crate std;
++
++#[cfg(test)]
++mod tests {
++    use calblas::caldnn::{Arg, Elem, FirstFit, Graph, NormKind, Plan, Pw};
++    use std::vec;
++
++    use crate::{engines, model};
++
++    fn ptr(u: calblas::caldnn::Uid) -> Arg {
++        Arg::Ptr(u64::from(u.0))
++    }
++
++    /// 融合引擎认下相邻的 `Pointwise(Add)` 与 `Norm(Rms)`：一条作业、5 个指针，次序 a、b、w、残差、输出。
++    #[test]
++    fn fused_is_one_job() {
++        let (g, io) = model::graph();
++        let plan = Plan::new(&g, engines::FUSED, &FirstFit::default()).unwrap();
++        assert_eq!(plan.jobs().len(), 1, "融合后应只有一个作业");
++        let j = &plan.jobs()[0];
++        assert_eq!(j.kernel, "fused_add_rms_norm");
++        assert_eq!(j.args, std::vec![ptr(io.a), ptr(io.b), ptr(io.w), ptr(io.residual), ptr(io.y)]);
++    }
++
++    /// 不挂融合引擎时退回两个单算子：作业数 2，残差那个中间张量要多读一遍。
++    #[test]
++    fn split_is_two_jobs() {
++        let (g, _io) = model::graph();
++        let plan = Plan::new(&g, engines::SPLIT, &FirstFit::default()).unwrap();
++        let names: vec::Vec<&str> = plan.jobs().iter().map(|j| j.kernel).collect();
++        assert_eq!(names, ["residual_add", "hidden_rms_norm"]);
++    }
++
++    /// 形状（eps）对不上就不该融合——融合引擎必须拒绝，不能算错。
++    #[test]
++    fn eps_mismatch_not_accepted_by_fused() {
++        let mut g = Graph::default();
++        let n = model::ROWS * model::HIDDEN;
++        let a = g.input(Elem::Bf16, &[n]);
++        let b = g.input(Elem::Bf16, &[n]);
++        let w = g.input(Elem::Bf16, &[1, model::HIDDEN]);
++        let s = g.pointwise(Pw::Add, a, Some(b));
++        g.norm(NormKind::Rms, s, Some(w), None, model::ROWS, model::EPS + 1.0e-3);
++        let only_fused: &[&dyn calblas::caldnn::Engine] = &[&engines::FUSED_ENGINE];
++        assert!(
++            Plan::new(&g, only_fused, &FirstFit::default()).is_err(),
++            "特化表里没有这个 eps ⇒ 引擎拒绝，交给两步路径"
++        );
++    }
++
++    /// 归一化的输入不是那个残差张量（中间插了别的运算）时也不能融合。
++    #[test]
++    fn unrelated_norm_not_fused() {
++        let mut g = Graph::default();
++        let n = model::ROWS * model::HIDDEN;
++        let a = g.input(Elem::Bf16, &[n]);
++        let b = g.input(Elem::Bf16, &[n]);
++        let w = g.input(Elem::Bf16, &[1, model::HIDDEN]);
++        let s = g.pointwise(Pw::Add, a, Some(b));
++        g.norm(NormKind::Rms, a, Some(w), None, model::ROWS, model::EPS);
++        let plan = Plan::new(&g, engines::FUSED, &FirstFit::default()).unwrap();
++        assert_eq!(plan.jobs().len(), 2, "归一化吃的不是残差 ⇒ 不融合");
++        assert!(s.0 < u32::MAX);
++    }
++
++    #[test]
++    fn rejects_missing_or_wrong_sized_weight() {
++        let only_fused: &[&dyn calblas::caldnn::Engine] = &[&engines::FUSED_ENGINE];
++        for weight_len in [None, Some(model::HIDDEN - 1), Some(model::HIDDEN + 1)] {
++            let mut g = Graph::default();
++            let a = g.input(Elem::Bf16, &[model::ROWS, model::HIDDEN]);
++            let b = g.input(Elem::Bf16, &[model::ROWS, model::HIDDEN]);
++            let w = weight_len.map(|n| g.input(Elem::Bf16, &[n]));
++            let s = g.pointwise(Pw::Add, a, Some(b));
++            g.norm(NormKind::Rms, s, w, None, model::ROWS, model::EPS);
++            assert!(Plan::new(&g, only_fused, &FirstFit::default()).is_err());
++        }
++    }
++}
+diff --git a/examples/fused_norm/src/main.rs b/examples/fused_norm/src/main.rs
+new file mode 100644
+index 0000000..a77e394
+--- /dev/null
++++ b/examples/fused_norm/src/main.rs
+@@ -0,0 +1,60 @@
++//! `cargo run -p fused_norm`：同一张图用两种编排各跑一遍——融合（1 个作业）与两步（2 个作业），
++//! 打印作业、工作区与 DDR 搬运量；最后给外部张量一组示意地址演示 `bind`（没有发射）。
++
++use calblas::caldnn::{Arg, FirstFit, Plan, Uid, VariantPack};
++use fused_norm::{engines, model};
++
++fn fmt(a: &Arg) -> String {
++    match a {
++        Arg::Ptr(u) => format!("%{u}"),
++        other => format!("{other:?}"),
++    }
++}
++
++fn main() {
++    let (g, io) = model::graph();
++    let elems = u64::from(model::ROWS) * u64::from(model::HIDDEN);
++    let bytes = elems * 2; // bf16
++    let wbytes = u64::from(model::HIDDEN) * 2;
++
++    println!("图：{} 个张量、{} 个运算（[{} × {}] bf16，每张矩阵 {} KiB）", g.tensors().len(), g.ops().len(), model::ROWS, model::HIDDEN, bytes / 1024);
++
++    for (label, list) in [("融合", engines::FUSED), ("两步", engines::SPLIT)] {
++        let plan = Plan::new(&g, list, &FirstFit::default()).unwrap_or_else(|e| {
++            eprintln!("{label}：{e}");
++            std::process::exit(1)
++        });
++        let [ddr, sram] = plan.workspace();
++        println!("\n{label}：{} 个作业，工作区 DDR {ddr} B、SRAM {sram} B", plan.jobs().len());
++        for j in plan.jobs() {
++            println!("  {}({})", j.kernel, j.args.iter().map(fmt).collect::<Vec<_>>().join(", "));
++        }
++    }
++
++    // 一趟的 DDR 往返：融合 = 读 a、b、w + 写 res、y；两步 = 再多读一遍残差中间张量（写的时候两份一样）
++    println!(
++        "\n一趟 DDR 搬运（不含主机读写）：融合 {} B、两步 {} B ⇒ 融合省 {} B（{:.1}%）",
++        (4 * bytes + wbytes),
++        (5 * bytes + wbytes),
++        bytes,
++        100.0 * bytes as f64 / (5 * bytes + wbytes) as f64
++    );
++
++    // 示意地址：外部张量按次序紧排（512 B 对齐）
++    let plan = Plan::new(&g, engines::FUSED, &FirstFit::default()).unwrap();
++    let mut next = 0x1_0000_0000u64;
++    let ptrs: Vec<(Uid, u64)> = (0..g.tensors().len())
++        .filter_map(|i| u32::try_from(i).ok().map(Uid))
++        .filter(|&u| !g[u].virt)
++        .map(|u| {
++            let at = next;
++            next = (at + g[u].elem.bytes(g[u].numel().into())).next_multiple_of(512);
++            (u, at)
++        })
++        .collect();
++    let jobs = plan.bind(&VariantPack { ptrs: &ptrs, workspace: next, sram: 0x0800_0000 }).unwrap_or_else(|e| {
++        eprintln!("没给地址：{e:?}");
++        std::process::exit(1)
++    });
++    println!("bind：{} 个作业的指针都换成了地址（a %{}、b %{}、w %{}、residual %{}、y %{}）", jobs.len(), io.a.0, io.b.0, io.w.0, io.residual.0, io.y.0);
++}
+diff --git a/examples/fused_norm/src/model.rs b/examples/fused_norm/src/model.rs
+new file mode 100644
+index 0000000..2ef230d
+--- /dev/null
++++ b/examples/fused_norm/src/model.rs
+@@ -0,0 +1,43 @@
++//! 一层里的那两步：`s = a + b`（残差，后面还要用）⇒ `y = rms_norm(s) · w`。
++//! 图照真实模型的写法搭——先 `pointwise(Add)` 再 `norm(Rms)`，融合与否是这个图的两种编排。
++
++use calblas::caldnn::{Elem, Graph, NormKind, Pw, Uid};
++
++pub const ROWS: u32 = 4;
++pub const HIDDEN: u32 = 4096;
++pub const EPS: f32 = 1.0e-6;
++
++pub struct Io {
++    pub a: Uid,
++    pub b: Uid,
++    pub w: Uid,
++    pub residual: Uid,
++    pub y: Uid,
++}
++
++pub fn graph() -> (Graph, Io) {
++    let mut g = Graph::default();
++    let a = g.input(Elem::Bf16, &[ROWS, HIDDEN]);
++    let b = g.input(Elem::Bf16, &[ROWS, HIDDEN]);
++    let w = g.input(Elem::Bf16, &[1, HIDDEN]);
++    let residual = g.pointwise(Pw::Add, a, Some(b));
++    let y = g.norm(NormKind::Rms, residual, Some(w), None, ROWS, EPS);
++    let y = g.output(y);
++    (g, Io { a, b, w, residual, y })
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    /// 两步的形状：逐元素包住 [rows, n]，归一化的 n 就是隐藏维。
++    #[test]
++    fn graph_shape() {
++        let (g, io) = graph();
++        assert_eq!(g.ops().len(), 2);
++        assert_eq!(g[io.residual].numel(), ROWS * HIDDEN);
++        assert_eq!(g[io.y].numel(), ROWS * HIDDEN);
++        assert!(!g[io.y].virt, "输出要标成输出（调用方给地址）");
++        assert!(g[io.residual].virt, "残差是中间张量");
++    }
++}
+diff --git a/examples/fused_norm/src/step.rs b/examples/fused_norm/src/step.rs
+new file mode 100644
+index 0000000..8231d9a
+--- /dev/null
++++ b/examples/fused_norm/src/step.rs
+@@ -0,0 +1,30 @@
++//! 裸字节接口。输入按 a、b、w 顺序存放，输出按 residual、y 顺序存放。
++use npu::prelude::*;
++
++const MATRIX_BYTES: u64 = 4 * 4096 * 2;
++const WEIGHT_OFFSET: u64 = 2 * MATRIX_BYTES;
++
++npu::decls! {
++    in_raw: input, bytes = 73728;
++    out_raw: output, bytes = 65536;
++}
++
++#[npu::program(chiplets = 1, cores = 2)]
++pub fn step() {
++    if core_rank() == 0 {
++        let a = in_raw().cast::<bf16>();
++        let b = in_raw().at(MATRIX_BYTES).cast::<bf16>();
++        let w = in_raw().at(WEIGHT_OFFSET).cast::<bf16>();
++        let residual = out_raw().cast::<bf16>();
++        let y = out_raw().at(MATRIX_BYTES).cast::<bf16>();
++
++        #[cfg(not(feature = "split"))]
++        crate::kernels::fused_add_rms_norm(a, b, w, residual, y);
++        #[cfg(feature = "split")]
++        {
++            crate::kernels::residual_add(a, b, residual);
++            crate::kernels::hidden_rms_norm(residual, w, y);
++        }
++    }
++    sync_cores();
++}
+diff --git a/examples/fused_norm/verify.py b/examples/fused_norm/verify.py
+new file mode 100644
+index 0000000..d1c4156
+--- /dev/null
++++ b/examples/fused_norm/verify.py
+@@ -0,0 +1,80 @@
++"""Generate a deterministic BF16 fixture and check raw device output."""
++import argparse
++import math
++from pathlib import Path
++import struct
++
++ROWS, HIDDEN = 4, 4096
++COUNT = ROWS * HIDDEN
++EPS = 1e-6
++
++
++def bf16(values):
++    def bits(value):
++        word = struct.unpack("<I", struct.pack("<f", value))[0]
++        return (word + 0x7FFF + ((word >> 16) & 1)) >> 16
++
++    return struct.pack(f"<{len(values)}H", *(bits(x) for x in values))
++
++
++def unpack(data):
++    return [struct.unpack("<f", b"\x00\x00" + item)[0]
++            for item in (data[i:i + 2] for i in range(0, len(data), 2))]
++
++
++def reference(raw):
++    assert len(raw) == 2 * (2 * COUNT + HIDDEN)
++    data = unpack(raw)
++    weight = data[2 * COUNT:]
++    residual = unpack(bf16([a + b for a, b in zip(data[:COUNT], data[COUNT:2 * COUNT])]))
++    output = []
++    for offset in range(0, COUNT, HIDDEN):
++        row = residual[offset:offset + HIDDEN]
++        rms = math.sqrt(math.fsum(s * s for s in row) / HIDDEN + EPS)
++        output.extend(s * w / rms for s, w in zip(row, weight))
++    return bf16(residual), output
++
++
++def generate(folder):
++    pattern = [(i % 31 - 15) / 16 for i in range(HIDDEN)]
++    a = pattern * 2 + [0.0] * HIDDEN + [v / 1024 for v in pattern]
++    b = [-v for v in pattern] + [(i % 17 - 8) / 32 for i in range(HIDDEN)] + [0.0] * (2 * HIDDEN)
++    w = [(i % 23 - 11) / 8 for i in range(HIDDEN)]
++    (folder / "input.bin").write_bytes(bf16(a + b + w))
++
++
++def check(raw, outputs):
++    residual, expected = reference(raw)
++    results = []
++    for path in outputs:
++        data = path.read_bytes()
++        if len(data) != 4 * COUNT:
++            raise SystemExit(f"{path}: expected {4 * COUNT} bytes, got {len(data)}")
++        if data[:2 * COUNT] != residual:
++            raise SystemExit(f"{path}: BF16 residual differs from reference")
++        actual = unpack(data[2 * COUNT:])
++        errors = [abs(x - y) for x, y in zip(actual, expected)]
++        failures = sum(not math.isclose(x, y, rel_tol=0.035, abs_tol=0.002)
++                       for x, y in zip(actual, expected))
++        if failures:
++            raise SystemExit(f"{path}: {failures} output elements exceed tolerance")
++        print(f"{path}: residual exact; output within tolerance; max abs error {max(errors):.6g}")
++        results.append(data)
++    if len(results) == 2 and results[0] != results[1]:
++        raise SystemExit("Fused and split output bytes differ")
++    if len(results) == 2:
++        print("Fused and split outputs are byte-identical")
++
++
++if __name__ == "__main__":
++    cli = argparse.ArgumentParser(description=__doc__)
++    commands = cli.add_subparsers(dest="command", required=True)
++    commands.add_parser("generate").add_argument("folder", type=Path)
++    verify = commands.add_parser("check")
++    verify.add_argument("input", type=Path)
++    verify.add_argument("outputs", type=Path, nargs="+")
++    args = cli.parse_args()
++    if args.command == "generate":
++        generate(args.folder)
++    else:
++        check(args.input.read_bytes(), args.outputs)
+diff --git a/src/engines.rs b/src/engines.rs
+index 1fbbc38..2a17b56 100644
+--- a/src/engines.rs
++++ b/src/engines.rs
+@@ -1,8 +1,8 @@
+ //! 引擎：每种运算（与参数签名）一个，持有「形状描述 ⇒ kernel 桩」的表（表在 examples 里按模型给），按图里运算的描述查表出作业。
+ //! 作业的指针参数先填张量号（`Uid` ⇒ `Ptr`），[`caldnn::Plan::bind`] 再换成地址。
+ use caldnn::{
+-    CompressDesc, ConvDesc, DeltanetDesc, HcDesc, LightningIndexDesc, SinkAttnDesc, EmbeddingDesc, Engine, Graph, HwptnDesc, MatmulDesc, MoeDenseDesc, MoeGatePostDesc, MoeGatePreDesc, MoeGluDesc, NormDesc, Notes, Op,
+-    PwDesc, RopeDesc, ScatterKvDesc, SdpaDesc, SharedGatedAddDesc, SparseIndexDesc, SparseSdpaDesc, Step, TransferDesc,
++    CompressDesc, ConvDesc, DeltanetDesc, HcDesc, LightningIndexDesc, SinkAttnDesc, EmbeddingDesc, Engine, Graph, HwptnDesc, MatmulDesc, MoeDenseDesc, MoeGatePostDesc, MoeGatePreDesc, MoeGluDesc, NormDesc, NormKind, Notes, Op,
++    PwDesc, Pw, RopeDesc, ScatterKvDesc, SdpaDesc, SharedGatedAddDesc, SparseIndexDesc, SparseSdpaDesc, Step, TransferDesc, Uid,
+ };
+ use npu::{bf16, f8e4m3, u4, Ddr, Launch, Ptr, Ram};
+ 
+@@ -130,3 +130,37 @@ engines! {
+     /// `calblas::mat2_hwptn!` / `calblas::hwptn2_mat!`
+     Hwptn(HwptnDesc, Hwptn, Notes::NONE) fn(Bf, Bf) = |io| (io[0], io[1]);
+ }
++
++/// `calblas::add_rms_norm!` 认的形状（rows 行 × n 列，eps 进 kernel 的常数）。
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct FusedNormDesc {
++    pub rows: u32,
++    pub n: u32,
++    pub eps: f32,
++}
++
++/// 融合引擎：一条 [`Step`] 认下图里相邻的两个运算——`Pointwise(Add)`（残差）与 `Norm(Rms)`（归一化），出一个作业。
++/// 融合引擎要排在单算子引擎（`Binary` / `RmsNorm`）**前面**：`FirstFit` 按表里的次序取第一个认得的。
++pub struct AddRmsNorm<'a>(pub &'a [(FusedNormDesc, fn(Bf, Bf, Bf, Bf, Bf) -> Launch<(Bf, Bf, Bf, Bf, Bf)>)]);
++
++impl Engine for AddRmsNorm<'_> {
++    fn name(&self) -> &str {
++        "AddRmsNorm"
++    }
++    fn step(&self, g: &Graph, at: usize) -> Option<Step<'_>> {
++        let &Op::Pointwise(PwDesc { f: Pw::Add, n }, [a, b, res]) = g.ops().get(at)? else { return None };
++        let &Op::Norm(NormDesc { kind: NormKind::Rms, rows, n: hn, eps }, [x, w, bias, y]) = g.ops().get(at + 1)? else { return None };
++        // 归一化吃的正是残差那个中间张量，且不带偏置；rows · n 要等于逐元素的元素数
++        if x != res || b == Uid::NONE || w == Uid::NONE || bias != Uid::NONE || rows.checked_mul(hn)? != n {
++            return None;
++        }
++        if [a, b, res, y].into_iter().any(|u| g[u].elem != caldnn::Elem::Bf16 || g[u].numel() != n)
++            || g[w].elem != caldnn::Elem::Bf16 || g[w].numel() != hn
++        {
++            return None;
++        }
++        let desc = FusedNormDesc { rows, n: hn, eps };
++        let &(_, kernel) = self.0.iter().find(|(d, _)| *d == desc)?;
++        Some(Step { covers: 2, jobs: alloc::vec![kernel(a.into(), b.into(), w.into(), res.into(), y.into()).into()] })
++    }
++}
+diff --git a/src/kernels/norm.rs b/src/kernels/norm.rs
+index 16d5d5b..5680800 100644
+--- a/src/kernels/norm.rs
++++ b/src/kernels/norm.rs
+@@ -45,6 +45,38 @@ macro_rules! rms_norm {
+     }};
+ }
+ 
++/// 融合残差与 RMSNorm（照 torch 的 `fused_add_rms_norm`）：`s = a + b`（bf16 里加、舍一次）⇒ 残差写 `res`；
++/// `y = s · rsqrt(mean(s²) + eps) · w`。与「先 `binary!(add)` 再 `rms_norm!`」逐步同序，预期输出逐位一致，且省去一次从 DDR 读回 `s`。
++/// 引擎：[`crate::engines::AddRmsNorm`]（一次认下图里相邻的 `Pointwise(Add)` 与 `Norm(Rms)`）。
++#[macro_export]
++macro_rules! add_rms_norm {
++    ($vis:vis $name:ident: rows = $rows:expr, n = $n:expr, eps = $eps:expr) => {
++        #[npu::kernel(numerics = "ks1")]
++        $vis fn $name(
++            a: npu::Ptr<npu::Ddr, npu::bf16>,
++            b: npu::Ptr<npu::Ddr, npu::bf16>,
++            w: npu::Ptr<npu::Ddr, npu::bf16>,
++            res: npu::Ptr<npu::Ddr, npu::bf16>,
++            y: npu::Ptr<npu::Ddr, npu::bf16>,
++        ) {
++            use npu::prelude::*;
++            const R: usize = $rows;
++            const C: usize = $crate::Line($n).norm_cols(128);
++            const V: usize = $n / C;
++            const SCALE: f32 = 1.0 / $n as f32;
++            let va = $crate::stage!($crate::rd!(a, [R, V, C]), [R, V, C]);
++            let vb = $crate::stage!($crate::rd!(b, [R, V, C]), [R, V, C]);
++            // 残差：与 binary!(add) 同一步（bf16 加、舍一次），写完就进 DDR，后面只读寄存器里的那份
++            va.add(va, vb);
++            va.store($crate::wr!(res, [R, V, C]));
++            $crate::rms_norm!(@scale va, R, V, C, SCALE, $eps);
++            let vw = $crate::stage!($crate::rd!(w, [1, V, C]), [1, V, C]);
++            va.mul(va, bcast(vw, &[0, 1, 2]));
++            va.store($crate::wr!(y, [R, V, C]));
++        }
++    };
++}
++
+ /// `y = x · rsqrt(Σx² + eps)`（沿每行，不带权重；gated deltanet 的 q / k）。
+ /// 照厂商（libccu `by_head<L2>`，docc callegacy tc/fused/rms_norm.rs）：torch 的写法是 `x / max(‖x‖₂, eps)`，‖x‖ 很小时两者不同。
+ #[macro_export]

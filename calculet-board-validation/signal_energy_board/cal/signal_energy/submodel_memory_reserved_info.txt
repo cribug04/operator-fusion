@@ -1,0 +1,18 @@
+model_arch signal_energy
+smodel_type llm_decode
+n_batch 1
+calc_mchip schip
+calc_utype [ccu]
+workload 17179869184 Byte
+
+cpu_chip0_ping.bin chip 00000000 00000000 00000001
+cpu_chip0_pong.bin chip 00000000 00000000 00000001
+
+ccu_stack_config location dram
+ccu0_chip0.elf location dram chip 00000000 00000000 00000001
+ccu1_chip0.elf location dram chip 00000000 00000000 00000001
+
+icsr cur_seq_len[0] offset 0x00001104
+icsr past_kv_cur_seq_len[0] offset 0x00001144
+ibuf in_raw shape [1024] type uint32 vaddr 0xc0000000 0xc0000000 size 4096
+obuf out_raw shape [16] type uint32 vaddr 0xc0010000 0xc0010000 size 64

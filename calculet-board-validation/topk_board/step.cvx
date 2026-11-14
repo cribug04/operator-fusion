@@ -1,0 +1,120 @@
+.config
+    $0 = #calvx.program{
+        version = #calvx.version{1, 0},
+        entry = @step,
+        chiplets = 1,
+        numeric = #calvx.numeric_env{rounding_mode = rne},
+        invocations = [#calvx.invocation{id = 0, callee = @step, cores = 2, after = []:i64}]
+    }
+    $1 = #calvx.numeric_env{rounding_mode = rnu, finite_only = true}
+.endconfig
+.module
+.attr calvx.program = $0
+    mem.decl     in_raw, input, 1024
+    mem.decl     out_raw, output, 128
+    .func step()
+    .reg  r0, r1: index
+    .reg  r2: i1
+    .reg  r3, r4, r5: ptr ddr
+    .reg  r6: index
+    .reg  r7: ptr ddr
+        sys.query    r0 = core_rank
+        s.constant   r1 = 0:index
+        s.cmp        r2 = r0, r1, eq
+        if           r2
+        .region
+            mem.addr     r3 = @in_raw
+            mem.addr     r4 = @out_raw
+            mem.addr     r5 = @out_raw
+            s.constant   r6 = 64:index
+            s.ptradd     r7 = r5, r6
+            call         r3, r4, r7, @topk
+            yield
+        .end
+        .region
+            yield
+        .end
+        barrier.core.sync
+        return
+    .endfunc
+    .func topk(r0: ptr ddr, r1: ptr ddr, r2: ptr ddr)
+    .attr npu.kernel = unit
+    .reg  r3: vcache f32[16,16]
+    .reg  r4: view ddr f32[16,16] read
+    .reg  r5, r6: vcache i32[16,16]
+    .reg  r7: i32
+    .reg  r8, r9: vcache i32[16,16]
+    .reg  r10: vcache f32[16,1]
+    .reg  r11: vcache f32[1,1]
+    .reg  r12: vcache i32[16,1]
+    .reg  r13: vcache i32[1,1]
+    .reg  r14: vcache i1[16,16]
+    .reg  r15: vcache i32[1,16]
+    .reg  r16: vcache i1[1,16]
+    .reg  r17: vcache f32[1,16]
+    .reg  r18: vcache i32[1,16]
+    .reg  r19: f32
+    .reg  r20: i32
+    .reg  r21, r22, r23: index
+    .reg  r25, r26, r27: i32
+    .reg  r28: f32
+    .reg  r29: view ddr f32[1,16] write
+    .reg  r30: view ddr i32[1,16] write
+        vec.cache    r3
+        view.bind_ptr r4 = r0
+        vec.load     r3, r4
+        vec.cache    r5
+        vec.cache    r6
+        vec.iota     r5, 0
+        vec.iota     r6, 1
+        s.constant   r7 = 16:i32
+        vec.mul      r5, r5, r7
+        vec.add      r5, r5, r6
+        vec.cache    r8
+        vec.copy     r8, r5
+        vec.cache    r9
+        vec.cache    r10
+        vec.cache    r11
+        vec.cache    r12
+        vec.cache    r13
+        vec.cache    r14
+        vec.cache    r15
+        vec.cache    r16
+        vec.cache    r17
+        vec.cache    r18
+        vec.iota     r15, 1
+        s.constant   r19 = 0.0:f32
+        vec.fill     r17, r19
+        s.constant   r20 = 0:i32
+        vec.fill     r18, r20
+        s.constant   r21 = 0:index
+        s.constant   r22 = 16:index
+        s.constant   r23 = 1:index
+        for          r21, r22, r23
+        .region
+        L0(r24: index):
+            vec.reduce   r10, r3, max, 1, $1
+            vec.reduce   r11, r10, max, 0, $1
+            vec.cmp      r14, r3, r11, eq, [0, 1]
+            s.constant   r25 = 256:i32
+            vec.select   r9, r14, r8, r25
+            vec.reduce   r12, r9, min, 1
+            vec.reduce   r13, r12, min, 0
+            q.cvt.s      r26 = r24, rne
+            vec.cmp      r16, r15, r26, eq
+            vec.select   r17, r16, r11, r17
+            vec.select   r18, r16, r13, r18
+            vec.cmp      r14, r5, r13, eq, [0, 1]
+            s.constant   r27 = 256:i32
+            vec.select   r8, r14, r27, r8
+            s.constant   r28 = -3.4028235e38:f32
+            vec.select   r3, r14, r28, r3
+            yield
+        .end
+        view.bind_ptr r29 = r1
+        vec.store    r29, r17
+        view.bind_ptr r30 = r2
+        vec.store    r30, r18
+        return
+    .endfunc
+.endmodule

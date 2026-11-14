@@ -1,0 +1,28 @@
+diff --git a/examples/tiny/Cargo.toml b/examples/tiny/Cargo.toml
+index 537d55b..e952267 100644
+--- a/examples/tiny/Cargo.toml
++++ b/examples/tiny/Cargo.toml
+@@ -10,6 +10,7 @@ crate-type = ["rlib"]
+ [features]
+ step = []
+ probe = []
++rms-check = ["step"]
+ 
+ [dependencies]
+ calblas = { path = "../.." }
+diff --git a/examples/tiny/src/step.rs b/examples/tiny/src/step.rs
+index bd6ff75..547ca06 100644
+--- a/examples/tiny/src/step.rs
++++ b/examples/tiny/src/step.rs
+@@ -115,7 +115,11 @@ pub fn step() {
+     layer!(0, 0);
+     layer!(1, 8);
+     if core_rank() == 0 {
++        #[cfg(feature = "rms-check")]
++        calblas::copy_i32!(out_outputs_0().at(24576), act().at(A_H), [2, 128]);
+         tiny_rms(act().at(A_H).cast(), w().at(L::OFFS[L::FINAL_NORM]).cast(), act().at(A_T).cast());
++        #[cfg(feature = "rms-check")]
++        calblas::copy_i32!(out_outputs_0().at(25600), act().at(A_T), [2, 128]);
+     }
+     sync_cores();
+     probe!(17, A_T, 1024); // 末了的 norm

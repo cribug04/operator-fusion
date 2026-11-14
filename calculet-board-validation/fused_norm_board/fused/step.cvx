@@ -1,0 +1,182 @@
+.config
+    $0 = #calvx.program{
+        version = #calvx.version{1, 0},
+        entry = @step,
+        chiplets = 1,
+        numeric = #calvx.numeric_env{rounding_mode = rne},
+        invocations = [#calvx.invocation{id = 0, callee = @step, cores = 2, after = []:i64}]
+    }
+    $1 = #calvx.numeric_env{rounding_mode = rnu, finite_only = true}
+.endconfig
+.module
+.attr calvx.program = $0
+    mem.decl     in_raw, input, 73728
+    mem.decl     out_raw, output, 65536
+    .func fused_add_rms_norm(r0: ptr ddr, r1: ptr ddr, r2: ptr ddr, r3: ptr ddr, r4: ptr ddr)
+    .attr npu.kernel = unit
+    .reg  r5: vcache bf16[4,32,128]
+    .reg  r6: view ddr bf16[4,32,128] read
+    .reg  r7: vcache bf16[4,32,128]
+    .reg  r8: view ddr bf16[4,32,128] read
+    .reg  r9: view ddr bf16[4,32,128] write
+    .reg  r10: vcache bf16[4,32,128]
+    .reg  r11: vcache f32[4,32,128]
+    .reg  r12: vcache f32[4,32,1]
+    .reg  r13: vcache f32[4,1,1]
+    .reg  r14, r15: f32
+    .reg  r16: vcache bf16[4,1,1]
+    .reg  r17: vcache bf16[1,32,128]
+    .reg  r18: view ddr bf16[1,32,128] read
+    .reg  r19: view ddr bf16[4,32,128] write
+        vec.cache    r5
+        view.bind_ptr r6 = r0
+        vec.load     r5, r6
+        vec.cache    r7
+        view.bind_ptr r8 = r1
+        vec.load     r7, r8
+        vec.add      r5, r5, r7
+        view.bind_ptr r9 = r3
+        vec.store    r9, r5
+        vec.cache    r10
+        vec.mul      r10, r5, r5
+        vec.cache    r11
+        q.cvt        r11, r10, rne
+        vec.cache    r12
+        vec.reduce   r12, r11, sum, 2, $1
+        vec.cache    r13
+        vec.reduce   r13, r12, sum, 1, $1
+        s.constant   r14 = 0.00024414063:f32
+        vec.mul      r13, r13, r14, _, $1
+        s.constant   r15 = 1e-6:f32
+        vec.add      r13, r13, r15, _, $1
+        vec.cache    r16
+        q.cvt        r16, r13, rne
+        q.rsqrt.approx r16, r16
+        vec.mul      r5, r5, r16, [0, 1, 2]
+        vec.cache    r17
+        view.bind_ptr r18 = r2
+        vec.load     r17, r18
+        vec.mul      r5, r5, r17, [0, 1, 2]
+        view.bind_ptr r19 = r4
+        vec.store    r19, r5
+        return
+    .endfunc
+    .func hidden_rms_norm(r0: ptr ddr, r1: ptr ddr, r2: ptr ddr)
+    .attr npu.kernel = unit
+    .reg  r3: vcache bf16[4,32,128]
+    .reg  r4: view ddr bf16[4,32,128] read
+    .reg  r5: vcache bf16[4,32,128]
+    .reg  r6: vcache f32[4,32,128]
+    .reg  r7: vcache f32[4,32,1]
+    .reg  r8: vcache f32[4,1,1]
+    .reg  r9, r10: f32
+    .reg  r11: vcache bf16[4,1,1]
+    .reg  r12: vcache bf16[1,32,128]
+    .reg  r13: view ddr bf16[1,32,128] read
+    .reg  r14: view ddr bf16[4,32,128] write
+        vec.cache    r3
+        view.bind_ptr r4 = r0
+        vec.load     r3, r4
+        vec.cache    r5
+        vec.mul      r5, r3, r3
+        vec.cache    r6
+        q.cvt        r6, r5, rne
+        vec.cache    r7
+        vec.reduce   r7, r6, sum, 2, $1
+        vec.cache    r8
+        vec.reduce   r8, r7, sum, 1, $1
+        s.constant   r9 = 0.00024414063:f32
+        vec.mul      r8, r8, r9, _, $1
+        s.constant   r10 = 1e-6:f32
+        vec.add      r8, r8, r10, _, $1
+        vec.cache    r11
+        q.cvt        r11, r8, rne
+        q.rsqrt.approx r11, r11
+        vec.mul      r3, r3, r11, [0, 1, 2]
+        vec.cache    r12
+        view.bind_ptr r13 = r1
+        vec.load     r12, r13
+        vec.mul      r3, r3, r12, [0, 1, 2]
+        view.bind_ptr r14 = r2
+        vec.store    r14, r3
+        return
+    .endfunc
+    .func residual_add(r0: ptr ddr, r1: ptr ddr, r2: ptr ddr)
+    .attr npu.kernel = unit
+    .reg  r3, r4: view ddr bf16[64,256] read
+    .reg  r5: view ddr bf16[64,256] write
+    .reg  r6, r7, r8: vcache bf16[32,256]
+    .reg  r9, r10, r11, r13, r14, r15: index
+    .reg  r16: view ddr bf16[32,256] read
+    .reg  r17, r18, r19: index
+    .reg  r20: view ddr bf16[32,256] read
+    .reg  r21, r22, r23: index
+    .reg  r24: view ddr bf16[32,256] write
+        view.bind_ptr r3 = r0
+        view.bind_ptr r4 = r1
+        view.bind_ptr r5 = r2
+        vec.cache    r6
+        vec.cache    r7
+        vec.cache    r8
+        s.constant   r9 = 0:index
+        s.constant   r10 = 2:index
+        s.constant   r11 = 1:index
+        for          r9, r10, r11
+        .region
+        L0(r12: index):
+            s.constant   r13 = 32:index
+            s.mul        r14 = r12, r13
+            s.constant   r15 = 0:index
+            view.subview_dyn r16 = r3, r14, r15
+            vec.load     r6, r16
+            s.constant   r17 = 32:index
+            s.mul        r18 = r12, r17
+            s.constant   r19 = 0:index
+            view.subview_dyn r20 = r4, r18, r19
+            vec.load     r7, r20
+            vec.add      r8, r6, r7
+            s.constant   r21 = 32:index
+            s.mul        r22 = r12, r21
+            s.constant   r23 = 0:index
+            view.subview_dyn r24 = r5, r22, r23
+            vec.store    r24, r8
+            yield
+        .end
+        return
+    .endfunc
+    .func step()
+    .reg  r0, r1: index
+    .reg  r2: i1
+    .reg  r3, r4: ptr ddr
+    .reg  r5: index
+    .reg  r6, r7: ptr ddr
+    .reg  r8: index
+    .reg  r9, r10, r11: ptr ddr
+    .reg  r12: index
+    .reg  r13: ptr ddr
+        sys.query    r0 = core_rank
+        s.constant   r1 = 0:index
+        s.cmp        r2 = r0, r1, eq
+        if           r2
+        .region
+            mem.addr     r3 = @in_raw
+            mem.addr     r4 = @in_raw
+            s.constant   r5 = 32768:index
+            s.ptradd     r6 = r4, r5
+            mem.addr     r7 = @in_raw
+            s.constant   r8 = 65536:index
+            s.ptradd     r9 = r7, r8
+            mem.addr     r10 = @out_raw
+            mem.addr     r11 = @out_raw
+            s.constant   r12 = 32768:index
+            s.ptradd     r13 = r11, r12
+            call         r3, r6, r9, r10, r13, @fused_add_rms_norm
+            yield
+        .end
+        .region
+            yield
+        .end
+        barrier.core.sync
+        return
+    .endfunc
+.endmodule

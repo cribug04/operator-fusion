@@ -1,0 +1,85 @@
+{
+  "backend": "CPU reference",
+  "passed": 10,
+  "total": 10,
+  "trials": [
+    {
+      "query": "rmsnorm root square",
+      "ids": [
+        0
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.10673300130292773
+    },
+    {
+      "query": "fusion residual ddr",
+      "ids": [
+        1
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.03277700307080522
+    },
+    {
+      "query": "topk highest positions",
+      "ids": [
+        2
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.02717899769777432
+    },
+    {
+      "query": "attention mask tokens",
+      "ids": [
+        3
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.025765999453142285
+    },
+    {
+      "query": "bf16 bytes",
+      "ids": [
+        4
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.026251000235788524
+    },
+    {
+      "query": "vector cache temporary",
+      "ids": [
+        5
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.02619400038383901
+    },
+    {
+      "query": "baseline performance",
+      "ids": [
+        6
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.02525500167394057
+    },
+    {
+      "query": "warmup latency",
+      "ids": [
+        7
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.025208995793946087
+    },
+    {
+      "query": "device",
+      "ids": [
+        7
+      ],
+      "passed": true,
+      "end_to_end_ms": 0.030420000257436186
+    },
+    {
+      "query": "astronomy telescope",
+      "ids": [],
+      "passed": true,
+      "end_to_end_ms": 0.02624800254125148
+    }
+  ]
+}

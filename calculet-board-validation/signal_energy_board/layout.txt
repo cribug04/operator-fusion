@@ -1,0 +1,21 @@
+== calbin /mnt/d/1/tianjin/signal_energy_board/cal ==
+  版本       v0.1  （键 CalccVer）
+  设备       ks1
+  模型       signal_energy （llm）
+  需要显存   16777216 MB（清单原文的单位）
+
+  内存预留 3 项：
+    dram_rsvd        Address { value: 3221225472, view: Ccu }  12860067840 字节
+    sram_rsvd        Address { value: 134217728, view: Ccu }  18612224 字节
+    sync_rsvd        Address { value: 168296448, view: Ccu }  20 字节
+
+  子模型 1 个：
+
+    signal_energy
+      类型 llm_decode
+      CCU 镜像 2 个：
+        ImageLine { file: "ccu0_chip0.elf", placement: Dram, mask: ChipMask { high: 0, mid: 0, low: 1 } }
+        ImageLine { file: "ccu1_chip0.elf", placement: Dram, mask: ChipMask { high: 0, mid: 0, low: 1 } }
+      命令流 2 条：
+        StreamLine { file: "cpu_chip0_ping.bin", chip: 0, phase: Ping, mask: ChipMask { high: 0, mid: 0, low: 1 } }
+        StreamLine { file: "cpu_chip0_pong.bin", chip: 0, phase: Pong, mask: ChipMask { high: 0, mid: 0, low: 1 } }

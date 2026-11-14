@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.bin -text
+*.elf -text
+*.cvxo -text
+*.tar.gz -text
+*.patch -text -whitespace
+**/cal/** -text -whitespace

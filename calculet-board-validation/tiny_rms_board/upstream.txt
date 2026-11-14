@@ -1,0 +1,3 @@
+calBLAS 32d2bb83d7160a593eaab67aa02e5dddbc8706cf
+calDNN 1e06c41c557a469a9acc7566acb9f7e2c7f7ca62
+npu 172aad2611c86ead4071356fbaca3cf6facd2917
