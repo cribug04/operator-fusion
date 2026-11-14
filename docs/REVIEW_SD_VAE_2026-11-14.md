@@ -45,7 +45,7 @@ Resize 分支 jax/validation-fixes 自洽，与 master 合并无冲突（`git me
 | 16 | 文档 | `docs/SD_VAE_ON_NPU.md:39,161`；`README.md`“sd_vae/evidence/ 参考图/仿真图/逐段对比 JSON/参考统计” | 文档列出的 `_recon/work/sd_vae/ref/`（`dumps_index.json`、`layer_table.json`、`reference_image.{bin,npy}`）与 `emu_out/` 的 `emulated_image.npy` **不在仓库里**。仓库只有 `sd_vae/evidence/{latent.bin, reference_image.png, emulated_image.png, compare.json, stage_compare.json, stage_summary.json}` 和 `sd_vae/reference/REFERENCE.md`。§6 复现命令引用的 `reference_image.bin` 也拿不到。 | `ls sd_vae/evidence sd_vae/reference`。 | 把 `ref_image.npy`（3 MB）入库，或在文档写清哪些只在上板包里。 |
 | 17 | 文档 | `docs/SD_VAE_ON_NPU.md:95`、`sd_vae/SMOKE.md:434`、`docs/SD_VAE_ON_NPU.md:69` | 正文把“布局/上采样 kernel 是 1 核、包在 `if core_rank()==0`”写成定论，而 `SMOKE.md:441` 自己承认这是未验证推断；`:69` 又说“两核分”。三处互相矛盾。 | 原文。 | 按 #1 的实验结论统一改写。 |
 | 18 | 文档 | `sd_vae/gen/host.py:31` | 注释“4 KiB 对齐到 163,840”：147,968 按 4 KiB 对齐是 149,504；163,840 是 16 KiB（`FILL_BLK`）对齐。 | 算术。 | 改注释。 |
-| 19 | 文档 | `sd_vae/onboard/sd_vae_onboard_pkg.tar.gz.sha256:1`；`docs/SD_VAE_ON_NPU.md:36`；`docs/CALCULET_RECON.md` 新增两行 | 含个人机器路径 `/mnt/c/Users/10463/...`、`C:\Users\10463\AppData\...`。不是密钥，但是私有信息；仓库公开时建议去掉。扫描未发现 token / 密码 / 私钥。 | `grep -rn "Users/10463"`。 | sha256 文件只留哈希和文件名。 |
+| 19 | 文档 | `sd_vae/onboard/sd_vae_onboard_pkg.tar.gz.sha256:1`；`docs/SD_VAE_ON_NPU.md:36`；`docs/CALCULET_RECON.md` 新增两行 | 含个人机器路径 `/mnt/c/Users/<user>/...`、`%USERPROFILE%\AppData\...`。不是密钥，但是私有信息；仓库公开时建议去掉。扫描未发现 token / 密码 / 私钥。 | `grep -rn "Users/<user>"`。 | sha256 文件只留哈希和文件名。 |
 | 20 | 文档 | `docs/SD_VAE_REAL_DEVICE_VERIFICATION.md:17` | “一次 5 段串行约几十秒~几分钟”没有任何测量依据。 | 无数据。 | 改为“未测”。 |
 
 ### 核对无误的项（正面结论，便于对外引用）

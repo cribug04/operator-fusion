@@ -1,12 +1,17 @@
 # 评委 / 复现者指南：10 分钟能在无板子的机器上核验什么
 
-目标读者：想自己动手核验、而不只看文档的人。每一步给出命令和**我们实际得到的输出**，对不上就说明环境或版本不同。
+目标读者：想自己动手核验、而不只看文档的人。以下区分可复跑命令与既有验证记录。时间为依赖已就绪时的估计，不含下载与首次编译；输出不一致时应检查环境、版本及程序，不能直接判定为环境问题。
 真机结果（Resize 逐位相同、VAE PSNR 52.58 dB）需要 Calculet 板卡，本指南不覆盖；它们的来源与状态见 [README §0](../README.md)。
 
 ## A. 只需 Python 3 + numpy（约 2 分钟）
 
 ```bash
-git clone https://gitee.com/nssdd/operator-fusion.git && cd operator-fusion
+git clone --branch jax/resize-dualcore https://gitee.com/nssdd/operator-fusion.git
+cd operator-fusion
+KIT=$(pwd)  # 后续 B/C 沿用同一终端
+python3 -m venv /tmp/operator-fusion-judge-venv
+source /tmp/operator-fusion-judge-venv/bin/activate
+python3 -m pip install numpy
 python3 -m unittest discover -s tests            # 43 项：验收工具、bf16 对比器、19 项 Resize 边界、3 项双核分配
 python3 onboard/check_resize_cpu.py              # 两个已上板用例的 CPU 参考与数据复核
 ```
@@ -28,13 +33,20 @@ PASS: 两个已提交 Resize 用例的 CPU 参考与数据一致；未执行 NPU
 
 ## B. 加上普通 Rust 工具链（约 3 分钟）：calDNN 图注册与编排
 
-需要 calBLAS / calDNN / npu 三个官方仓库并排放置（匿名可克隆）。
+需要 calBLAS / calDNN / npu 三个官方仓库并排放置。以下在新目录克隆，固定到本项目验证时的提交；需能访问主办方仓库及 Cargo 包源。
 
 ```bash
-for r in calBLAS calDNN npu; do git clone http://115.159.82.89/git/calculet/$r.git; done
-( cd calDNN  && git apply ../operator-fusion/patches/caldnn_resize.patch && cargo build )
-( cd calBLAS && git apply ../operator-fusion/patches/onboard_kit.patch   && cargo build -p calblas )
-cd calBLAS/examples/resize_probe && cargo run -q -p resize-plan && cargo test -q -p resize-plan
+REPRO=$(mktemp -d /tmp/operator-fusion-judge.XXXXXX)
+cd "$REPRO"
+for r in calBLAS calDNN npu; do
+  git clone "http://115.159.82.89/git/calculet/$r.git" "$r" || exit 1
+done
+git -C calBLAS checkout 32d2bb8
+git -C calDNN checkout 1e06c41
+git -C npu checkout 172aad2
+( cd calDNN && git apply --check "$KIT/patches/caldnn_resize.patch" && git apply "$KIT/patches/caldnn_resize.patch" && cargo build )
+( cd calBLAS && git apply --check "$KIT/patches/onboard_kit.patch" && git apply "$KIT/patches/onboard_kit.patch" && cargo build -p calblas )
+( cd calBLAS/examples/resize_probe && cargo run -q -p resize-plan && cargo test -q -p resize-plan )
 ```
 
 期望：
@@ -52,12 +64,12 @@ test result: ok. 5 passed; 0 failed
 ## C. 有 calculet 工具链时（Linux x86_64，约 5 分钟）：设备端编译与 docc 自检
 
 ```bash
-cd operator-fusion/onboard
-CALBLAS=/path/to/calBLAS bash package_all.sh      # 7 个程序：编译 → .cvx → docc calbin from-calvx → doctor
+cd "$KIT/onboard"
+RUSTUP_TOOLCHAIN=calculet CALBLAS="$REPRO/calBLAS" bash package_all.sh      # 7 个程序：编译 → .cvx → docc calbin from-calvx → doctor
 ```
 
 期望：每个程序打印 `拒收 0 条`（警告 2 条是 ping/pong 两个固定项），最后列出 7 个 calbin 目录。
-可核对的哈希（`sha256sum examples/<名>/target/dopamine-unknown-none-cvx/npu/<名>.cvx`，前 16 位）：
+可核对的哈希（`sha256sum "$REPRO/calBLAS/examples/<名>/target/dopamine-unknown-none-cvx/npu/<名>.cvx"`，前 16 位）：
 
 | 程序 | `.cvx` sha256 前缀 | 说明 |
 | --- | --- | --- |
@@ -78,3 +90,7 @@ VAE 5 段同理：把 `sd_vae/kernels/<段>/` 复制为 `calBLAS/examples/sd_vae
 3. [patches/caldnn_resize.patch](../patches/caldnn_resize.patch)：79 行，图框架改动的全部。
 4. [docs/REVIEW_SD_VAE_2026-11-14.md](REVIEW_SD_VAE_2026-11-14.md)：VAE 审查，两条阻断级发现各有可复跑的探针实验。
 5. [sd_vae/gen/gen.py](../sd_vae/gen/gen.py)：层表到 Rust 的生成器。
+
+## 验证边界
+
+A 可在普通 CPU 主机执行；B/C 需要额外依赖。仓库中的 `sd_vae/evidence/compare.json` 是本地仿真比较，不能作为真机报告。真机输出、运行命令、设备版本和提交号应一起归档后再据此验收。
