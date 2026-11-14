@@ -2,7 +2,7 @@
 
 本仓库是 **Calculet NPU CalVX 黑客松**工作的快照：从零实现/验证的 CV 算子、优化原型、仓库勘察报告，以及一套**可直接在真机上执行**的验证工具包。
 
-> 一句话：**Bilinear Resize ×2（含通道分块版）已在 calculet 工具链上完成"编译→CalVX→docc calbin→doctor"全链路平台验证；stride-2 FAST 卷积原型已编译/打包通过；真机数值验证所需的 calbin、数据、脚本、判定标准与排错表全部就绪。**
+> 一句话：**Bilinear Resize ×2（含通道分块版）已在 calculet 工具链上完成"编译→CalVX→docc calbin→doctor"全链路平台验证；stride-2 FAST 卷积原型已编译/打包通过；另完成 Stable Diffusion 1.5 VAE 解码器的全 NPU 移植（5 段整步程序，docc 拒收 0，本地黄金仿真与 diffusers fp32 参考 PSNR 52.8 dB）；真机数值验证所需的 calbin、数据、脚本、判定标准与排错表全部就绪。**
 
 ---
 
@@ -10,6 +10,8 @@
 
 | 目录 | 内容 |
 | --- | --- |
+| [`docs/SD_VAE_ON_NPU.md`](docs/SD_VAE_ON_NPU.md) | **SD1.5 VAE 解码器全 NPU 移植**：5 段整步程序、层表、布局/自定义 kernel、权重重排、平台与仿真证据、上板步骤与判据 |
+| [`sd_vae/`](sd_vae/) | SD VAE 的生成器/打包器/仿真器、5 段 kernel 源码、上板包脚本与证据 |
 | [`docs/CALCULET_RECON.md`](docs/CALCULET_RECON.md) | 仓库勘察报告：环境/工具链实测、算子覆盖、docc/dort 真实用法、真机测试证据、缺失算子与选题建议、48h 分工 |
 | [`docs/RESIZE_OPERATOR.md`](docs/RESIZE_OPERATOR.md) | **Resize 算子交付说明**：语义、代码位置、构建/打包/验证数据、真机步骤、已知限制 |
 | [`docs/OPTIMIZATION_CANDIDATES.md`](docs/OPTIMIZATION_CANDIDATES.md) | **还能优化什么**：按 ROI 排序的算子/框架优化清单 + 本轮落地的两项 |
@@ -40,6 +42,27 @@
 | conv_s2_ref（同形状慢路） | 15,241 B | 16,152 / 16,152 B | 11,204 | 1,897 条，0 unknown | 拒收 0 条 |
 
 > 两次 `docc calbin from-calvx` 构建的 calbin **逐字节相同**；resize 两个用例的 CPU 参考（numpy 复刻运算次序）与独立 float64 数学参照在全部输出上 **bf16 舍入 100% 一致**（≤0.996 ULP）。
+
+---
+
+## 2.5 Stable Diffusion 1.5 · VAE 解码器全 NPU 移植（2026-11-14）
+
+把 SD1.5 的 **VAE decoder**（latent `[4,64,64]` → 512×512 RGB 图像）完整做成 5 段 CalVX 整步程序（`a→b1→b2a→b2b→c`），一段一个 calbin、板上串行喂 latent 出图。详见 [`docs/SD_VAE_ON_NPU.md`](docs/SD_VAE_ON_NPU.md)。
+
+| 段 | 输入 → 输出 | `.cvx` B | 参数块 B | ccu0/ccu1 ELF B | doctor |
+| --- | --- | --- | --- | --- | --- |
+| a | latent → 64²×512（conv_in + mid resnet×2 + 单头注意力） | 246,653 | 21,483,520 | 1,414,604 / 1,049,156 | 拒收 0 |
+| b1 | 64²×512 → 128²×512（up_blocks.0 + nearest×2+conv） | 161,147 | 33,452,032 | 968,488 / 714,864 | 拒收 0 |
+| b2a | 128²×512 → 128²×512（up_blocks.1 的 3 个 resnet） | 71,793 | 28,729,344 | 398,836 / 145,552 | 拒收 0 |
+| b2b | 128²×512 → 256²×512（nearest×2 + conv） | 22,917 | 4,722,688 | 31,112 / 29,820 | 拒收 0 |
+| c | 256²×512 → 512×512 图（up_blocks.2/3 + norm + conv_out） | 278,556 | 12,292,096 | 1,527,952 / 959,116 | 拒收 0 |
+| 合计 | — | 780,066 | 96,279,680 | 4,340,992 / 2,898,508 | — |
+
+**本地数值**：用 torch 按 `step.rs` 的算子顺序与我们的布局**仿真同一份程序**，与 diffusers fp32 黄金参考（确定性 decode）比较：最终图 **PSNR 52.83 dB**、max\|Δ\| 0.0473、mean\|Δ\| 0.00336；四个中间段边界 26.3–43.9 dB（张量数值范围 ±233，bf16 存储误差）。**真机数值待板**（上板包与判据已备好）。
+
+两个工程发现（写进文档）：
+1. **docc 0.4.1 的 riscvc 21 位分支限制**：内核对 `for part in 0..NH` 的常量上界会被整段展开，`group_norm` 在 128²×512 时单函数 `.text ≈ 1.12 MB` > ±1,048,575 B ⇒ 链接失败（实测 hw=4096/8192/12288/16384 → .text 282K/560K/831K/1,116K）。把 NH 做成普通标量实参无效（内联+常量传播），只能从 SRAM 读；我们改为自写 `gn_stats`/`gn_apply` 两个 kernel（运行期循环上界），同时把 GN 参数从 313 MB 缩到 96 MB。
+2. **docc calt-fate 的 GOB 累加串次序**：注意力里「分数链 + 4 个 PV 累加器链」不能同循环在飞；拆成「先算 p 存 VB、再单独累加 PV」即通过（与 conv2d FAST 四累加器同构）。
 
 ---
 

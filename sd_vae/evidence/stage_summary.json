@@ -1,0 +1,56 @@
+{
+ "mid_block_resnets1_out": {
+  "shape": [
+   1,
+   512,
+   64,
+   64
+  ],
+  "min": -19.078998565673828,
+  "max": 18.86022186279297,
+  "mean": 0.03757667503660153,
+  "std": 1.5962482212108793,
+  "abs_mean": 1.168086561732396,
+  "rms": 1.5966904490932805,
+  "sha256_raw_fp32_le_bytes": "64323559aa14508d229831281f899fc315a54a4d3901f20a0728071f7989c672",
+  "dump_file": "dump_026_decoder_mid_block_resnets_1_out0.npy",
+  "module": "decoder.mid_block.resnets.1",
+  "note": "mid block 第 2 个 ResnetBlock2D 的输出（attention 之后），shape [1,512,64,64]"
+ },
+ "up_blocks1_upsampler_out": {
+  "shape": [
+   1,
+   512,
+   256,
+   256
+  ],
+  "min": -232.79693603515625,
+  "max": 214.55450439453125,
+  "mean": -0.8096220620630923,
+  "std": 18.617848987007253,
+  "abs_mean": 13.95535120748281,
+  "rms": 18.635444421488483,
+  "sha256_raw_fp32_le_bytes": "96de91009d01a50a0256b18ad4e24c5d197049f8d66db42a9f804412a85f33fa",
+  "dump_file": "dump_082_decoder_up_blocks_1_upsamplers_0_out0.npy",
+  "module": "decoder.up_blocks.1.upsamplers.0",
+  "note": "up_blocks.1 的 Upsample2D 输出（nearest x2 + 3x3 conv 之后），shape [1,512,256,256]"
+ },
+ "conv_out": {
+  "shape": [
+   1,
+   3,
+   512,
+   512
+  ],
+  "min": -1.8671338558197021,
+  "max": 1.6532388925552368,
+  "mean": -0.08990911896605192,
+  "std": 0.7381241749942636,
+  "abs_mean": 0.6429572074266551,
+  "rms": 0.7435798191076826,
+  "sha256_raw_fp32_le_bytes": "5dcfd42c0a36f4727ddaff2ef14c5b01c4cbcf6e36ed852acb9648858e03475b",
+  "dump_file": "dump_141_decoder_conv_out_out0.npy",
+  "module": "decoder.conv_out",
+  "note": "最终 conv_out 输出，shape [1,3,512,512]（= 参考图像，未 clamp）"
+ }
+}
