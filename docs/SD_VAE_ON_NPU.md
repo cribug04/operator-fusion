@@ -105,6 +105,11 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 
 （doctor 的 2 条警告都是 `in_x`/`out_y` 的 ping/pong 同址；单次推理不触发，重复喂输入时需要加 `double_buffer`。）
 
+补充证据（完整表见 `_recon/work/sd_vae/STAGE_EVIDENCE.md`）：
+- **确定性**：删 `target` 重编两次，5 段 `.cvx` sha256 全部逐字节相同；`docc calbin from-calvx` 跑两次，5 段两组 CCU ELF sha256 逐字节相同。
+- **反汇编**：5 段 × 2 核共 12 份 CCU ELF，`docc elf ccu disasm` 全部“走完了：每个字节都被一条认得出的指令覆盖”，**unknown 0 条**（合计 780,543 条 ccu0 / 496,845 条 ccu1）。
+- **装载量**：`docc elf ccu view` 的 `load_size` 与“各节字节和”自校验一致（a 1,408,852 / b1 963,092 / b2a 393,608 / b2b 26,072 / c 1,521,480 B，ccu0）。
+
 ### 5.2 本地黄金仿真 vs diffusers fp32 参考
 
 参考侧（sd-ref）：torch 2.15.0+cpu、diffusers 0.43.0，权重 fp32（sha256 `a2b5134f…`），latent = `default_rng(1234).standard_normal((1,4,64,64))/0.18215`（sha256 `79ed3410…`），确定性两次 decode 逐 bit 相同。
