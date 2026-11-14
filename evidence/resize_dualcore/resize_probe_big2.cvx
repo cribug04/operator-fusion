@@ -1,0 +1,1067 @@
+.config
+    $0 = #calvx.program{
+        version = #calvx.version{1, 0},
+        entry = @step,
+        chiplets = 1,
+        numeric = #calvx.numeric_env{rounding_mode = rne},
+        invocations = [#calvx.invocation{id = 0, callee = @step, cores = 2, after = []:i64}]
+    }
+    $1 = #calvx.numeric_env{rounding_mode = rnu, finite_only = true}
+.endconfig
+.module
+.attr calvx.program = $0
+    mem.decl     in_x, input, 524288, double_buffer
+    mem.decl     out_y, output, 2097152, double_buffer
+    .func resize_bilinear2_big2(r0: ptr ddr, r1: ptr ddr)
+    .attr npu.kernel = unit
+    .attr npu.cores = 2:i32
+    .reg  r2, r3, r4, r5, r6, r7, r9, r10, r11, r12, r13: index
+    .reg  r14: ptr ddr
+    .reg  r15: view ddr bf16[32,32,64] stride[8192,256,1] read
+    .reg  r16, r17, r18, r19: index
+    .reg  r20: ptr ddr
+    .reg  r21: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r22, r23, r24, r25: index
+    .reg  r26: ptr ddr
+    .reg  r27: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r28, r29, r30, r31: index
+    .reg  r32: ptr ddr
+    .reg  r33: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r34, r35, r36, r37: index
+    .reg  r38: ptr ddr
+    .reg  r39: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r40, r41, r42: vcache bf16[32,64]
+    .reg  r43, r44, r45, r46, r47, r48, r49, r50, r51, r52, r53: vcache f32[32,64]
+    .reg  r54: vcache bf16[32,64]
+    .reg  r55: vcache f32[32,64]
+    .reg  r56, r57, r58: view ddr bf16[1,32,64] stride[8192,256,1] read
+    .reg  r59: f32
+    .reg  r60: index
+    .reg  r61: vcache f32[31,64]
+    .reg  r62: index
+    .reg  r63: vcache f32[31,64]
+    .reg  r64: f32
+    .reg  r65: index
+    .reg  r66: vcache f32[31,64]
+    .reg  r67: index
+    .reg  r68: vcache f32[31,64]
+    .reg  r69: index
+    .reg  r70: vcache f32[31,64]
+    .reg  r71: index
+    .reg  r72: vcache f32[1,64]
+    .reg  r73: index
+    .reg  r74: vcache f32[1,64]
+    .reg  r75: f32
+    .reg  r76: index
+    .reg  r77: vcache f32[31,64]
+    .reg  r78: index
+    .reg  r79: vcache f32[31,64]
+    .reg  r80: f32
+    .reg  r81: index
+    .reg  r82: vcache f32[31,64]
+    .reg  r83: index
+    .reg  r84: vcache f32[31,64]
+    .reg  r85: index
+    .reg  r86: vcache f32[31,64]
+    .reg  r87: index
+    .reg  r88: vcache f32[1,64]
+    .reg  r89: index
+    .reg  r90: vcache f32[1,64]
+    .reg  r91: f32
+    .reg  r92: index
+    .reg  r93: vcache f32[31,64]
+    .reg  r94: index
+    .reg  r95: vcache f32[31,64]
+    .reg  r96: f32
+    .reg  r97: index
+    .reg  r98: vcache f32[31,64]
+    .reg  r99: index
+    .reg  r100: vcache f32[31,64]
+    .reg  r101: index
+    .reg  r102: vcache f32[31,64]
+    .reg  r103: index
+    .reg  r104: vcache f32[1,64]
+    .reg  r105: index
+    .reg  r106: vcache f32[1,64]
+    .reg  r107: f32
+    .reg  r108: index
+    .reg  r109: vcache f32[31,64]
+    .reg  r110: index
+    .reg  r111: vcache f32[31,64]
+    .reg  r112: f32
+    .reg  r113: index
+    .reg  r114: vcache f32[31,64]
+    .reg  r115: index
+    .reg  r116: vcache f32[31,64]
+    .reg  r117: index
+    .reg  r118: vcache f32[31,64]
+    .reg  r119: index
+    .reg  r120: vcache f32[1,64]
+    .reg  r121: index
+    .reg  r122: vcache f32[1,64]
+    .reg  r123: f32
+    .reg  r124: index
+    .reg  r125: vcache f32[31,64]
+    .reg  r126: index
+    .reg  r127: vcache f32[31,64]
+    .reg  r128: f32
+    .reg  r129: index
+    .reg  r130: vcache f32[31,64]
+    .reg  r131: index
+    .reg  r132: vcache f32[31,64]
+    .reg  r133: index
+    .reg  r134: vcache f32[31,64]
+    .reg  r135: index
+    .reg  r136: vcache f32[1,64]
+    .reg  r137: index
+    .reg  r138: vcache f32[1,64]
+    .reg  r139: f32
+    .reg  r140: index
+    .reg  r141: vcache f32[31,64]
+    .reg  r142: index
+    .reg  r143: vcache f32[31,64]
+    .reg  r144: f32
+    .reg  r145: index
+    .reg  r146: vcache f32[31,64]
+    .reg  r147: index
+    .reg  r148: vcache f32[31,64]
+    .reg  r149: index
+    .reg  r150: vcache f32[31,64]
+    .reg  r151: index
+    .reg  r152: vcache f32[1,64]
+    .reg  r153: index
+    .reg  r154: vcache f32[1,64]
+    .reg  r155, r156: f32
+    .reg  r157: view ddr bf16[32,64] stride[512,1] write
+    .reg  r158, r159: f32
+    .reg  r160: view ddr bf16[32,64] stride[512,1] write
+    .reg  r161, r162: f32
+    .reg  r163: view ddr bf16[32,64] stride[512,1] write
+    .reg  r164, r165: f32
+    .reg  r166: view ddr bf16[32,64] stride[512,1] write
+    .reg  r167, r168, r169, r171, r172: index
+    .reg  r173: ptr ddr
+    .reg  r174: view ddr bf16[32,32,64] stride[8192,256,1] read
+    .reg  r175, r176, r177, r178: index
+    .reg  r179: ptr ddr
+    .reg  r180: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r181, r182, r183, r184: index
+    .reg  r185: ptr ddr
+    .reg  r186: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r187, r188, r189, r190: index
+    .reg  r191: ptr ddr
+    .reg  r192: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r193, r194, r195, r196: index
+    .reg  r197: ptr ddr
+    .reg  r198: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r199, r200, r201: vcache bf16[32,64]
+    .reg  r202, r203, r204, r205, r206, r207, r208, r209, r210, r211, r212: vcache f32[32,64]
+    .reg  r213: vcache bf16[32,64]
+    .reg  r214: vcache f32[32,64]
+    .reg  r215, r216, r217, r218: index
+    .reg  r219: view ddr bf16[1,32,64] stride[8192,256,1] read
+    .reg  r220, r221: index
+    .reg  r222: view ddr bf16[1,32,64] stride[8192,256,1] read
+    .reg  r223, r224, r225, r226: index
+    .reg  r227: view ddr bf16[1,32,64] stride[8192,256,1] read
+    .reg  r228: f32
+    .reg  r229: index
+    .reg  r230: vcache f32[31,64]
+    .reg  r231: index
+    .reg  r232: vcache f32[31,64]
+    .reg  r233: f32
+    .reg  r234: index
+    .reg  r235: vcache f32[31,64]
+    .reg  r236: index
+    .reg  r237: vcache f32[31,64]
+    .reg  r238: index
+    .reg  r239: vcache f32[31,64]
+    .reg  r240: index
+    .reg  r241: vcache f32[1,64]
+    .reg  r242: index
+    .reg  r243: vcache f32[1,64]
+    .reg  r244: f32
+    .reg  r245: index
+    .reg  r246: vcache f32[31,64]
+    .reg  r247: index
+    .reg  r248: vcache f32[31,64]
+    .reg  r249: f32
+    .reg  r250: index
+    .reg  r251: vcache f32[31,64]
+    .reg  r252: index
+    .reg  r253: vcache f32[31,64]
+    .reg  r254: index
+    .reg  r255: vcache f32[31,64]
+    .reg  r256: index
+    .reg  r257: vcache f32[1,64]
+    .reg  r258: index
+    .reg  r259: vcache f32[1,64]
+    .reg  r260: f32
+    .reg  r261: index
+    .reg  r262: vcache f32[31,64]
+    .reg  r263: index
+    .reg  r264: vcache f32[31,64]
+    .reg  r265: f32
+    .reg  r266: index
+    .reg  r267: vcache f32[31,64]
+    .reg  r268: index
+    .reg  r269: vcache f32[31,64]
+    .reg  r270: index
+    .reg  r271: vcache f32[31,64]
+    .reg  r272: index
+    .reg  r273: vcache f32[1,64]
+    .reg  r274: index
+    .reg  r275: vcache f32[1,64]
+    .reg  r276: f32
+    .reg  r277: index
+    .reg  r278: vcache f32[31,64]
+    .reg  r279: index
+    .reg  r280: vcache f32[31,64]
+    .reg  r281: f32
+    .reg  r282: index
+    .reg  r283: vcache f32[31,64]
+    .reg  r284: index
+    .reg  r285: vcache f32[31,64]
+    .reg  r286: index
+    .reg  r287: vcache f32[31,64]
+    .reg  r288: index
+    .reg  r289: vcache f32[1,64]
+    .reg  r290: index
+    .reg  r291: vcache f32[1,64]
+    .reg  r292: f32
+    .reg  r293: index
+    .reg  r294: vcache f32[31,64]
+    .reg  r295: index
+    .reg  r296: vcache f32[31,64]
+    .reg  r297: f32
+    .reg  r298: index
+    .reg  r299: vcache f32[31,64]
+    .reg  r300: index
+    .reg  r301: vcache f32[31,64]
+    .reg  r302: index
+    .reg  r303: vcache f32[31,64]
+    .reg  r304: index
+    .reg  r305: vcache f32[1,64]
+    .reg  r306: index
+    .reg  r307: vcache f32[1,64]
+    .reg  r308: f32
+    .reg  r309: index
+    .reg  r310: vcache f32[31,64]
+    .reg  r311: index
+    .reg  r312: vcache f32[31,64]
+    .reg  r313: f32
+    .reg  r314: index
+    .reg  r315: vcache f32[31,64]
+    .reg  r316: index
+    .reg  r317: vcache f32[31,64]
+    .reg  r318: index
+    .reg  r319: vcache f32[31,64]
+    .reg  r320: index
+    .reg  r321: vcache f32[1,64]
+    .reg  r322: index
+    .reg  r323: vcache f32[1,64]
+    .reg  r324, r325: f32
+    .reg  r326, r327, r328: index
+    .reg  r329: view ddr bf16[32,64] stride[512,1] write
+    .reg  r330, r331: f32
+    .reg  r332, r333, r334: index
+    .reg  r335: view ddr bf16[32,64] stride[512,1] write
+    .reg  r336, r337: f32
+    .reg  r338, r339, r340: index
+    .reg  r341: view ddr bf16[32,64] stride[512,1] write
+    .reg  r342, r343: f32
+    .reg  r344, r345, r346: index
+    .reg  r347: view ddr bf16[32,64] stride[512,1] write
+    .reg  r348, r349: index
+    .reg  r350: ptr ddr
+    .reg  r351: view ddr bf16[32,32,64] stride[8192,256,1] read
+    .reg  r352, r353, r354, r355: index
+    .reg  r356: ptr ddr
+    .reg  r357: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r358, r359, r360, r361: index
+    .reg  r362: ptr ddr
+    .reg  r363: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r364, r365, r366, r367: index
+    .reg  r368: ptr ddr
+    .reg  r369: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r370, r371, r372, r373: index
+    .reg  r374: ptr ddr
+    .reg  r375: view ddr bf16[2048,64] stride[512,1] write
+    .reg  r376, r377, r378: vcache bf16[32,64]
+    .reg  r379, r380, r381, r382, r383, r384, r385, r386, r387, r388, r389: vcache f32[32,64]
+    .reg  r390: vcache bf16[32,64]
+    .reg  r391: vcache f32[32,64]
+    .reg  r392, r393, r394: view ddr bf16[1,32,64] stride[8192,256,1] read
+    .reg  r395: f32
+    .reg  r396: index
+    .reg  r397: vcache f32[31,64]
+    .reg  r398: index
+    .reg  r399: vcache f32[31,64]
+    .reg  r400: f32
+    .reg  r401: index
+    .reg  r402: vcache f32[31,64]
+    .reg  r403: index
+    .reg  r404: vcache f32[31,64]
+    .reg  r405: index
+    .reg  r406: vcache f32[31,64]
+    .reg  r407: index
+    .reg  r408: vcache f32[1,64]
+    .reg  r409: index
+    .reg  r410: vcache f32[1,64]
+    .reg  r411: f32
+    .reg  r412: index
+    .reg  r413: vcache f32[31,64]
+    .reg  r414: index
+    .reg  r415: vcache f32[31,64]
+    .reg  r416: f32
+    .reg  r417: index
+    .reg  r418: vcache f32[31,64]
+    .reg  r419: index
+    .reg  r420: vcache f32[31,64]
+    .reg  r421: index
+    .reg  r422: vcache f32[31,64]
+    .reg  r423: index
+    .reg  r424: vcache f32[1,64]
+    .reg  r425: index
+    .reg  r426: vcache f32[1,64]
+    .reg  r427: f32
+    .reg  r428: index
+    .reg  r429: vcache f32[31,64]
+    .reg  r430: index
+    .reg  r431: vcache f32[31,64]
+    .reg  r432: f32
+    .reg  r433: index
+    .reg  r434: vcache f32[31,64]
+    .reg  r435: index
+    .reg  r436: vcache f32[31,64]
+    .reg  r437: index
+    .reg  r438: vcache f32[31,64]
+    .reg  r439: index
+    .reg  r440: vcache f32[1,64]
+    .reg  r441: index
+    .reg  r442: vcache f32[1,64]
+    .reg  r443: f32
+    .reg  r444: index
+    .reg  r445: vcache f32[31,64]
+    .reg  r446: index
+    .reg  r447: vcache f32[31,64]
+    .reg  r448: f32
+    .reg  r449: index
+    .reg  r450: vcache f32[31,64]
+    .reg  r451: index
+    .reg  r452: vcache f32[31,64]
+    .reg  r453: index
+    .reg  r454: vcache f32[31,64]
+    .reg  r455: index
+    .reg  r456: vcache f32[1,64]
+    .reg  r457: index
+    .reg  r458: vcache f32[1,64]
+    .reg  r459: f32
+    .reg  r460: index
+    .reg  r461: vcache f32[31,64]
+    .reg  r462: index
+    .reg  r463: vcache f32[31,64]
+    .reg  r464: f32
+    .reg  r465: index
+    .reg  r466: vcache f32[31,64]
+    .reg  r467: index
+    .reg  r468: vcache f32[31,64]
+    .reg  r469: index
+    .reg  r470: vcache f32[31,64]
+    .reg  r471: index
+    .reg  r472: vcache f32[1,64]
+    .reg  r473: index
+    .reg  r474: vcache f32[1,64]
+    .reg  r475: f32
+    .reg  r476: index
+    .reg  r477: vcache f32[31,64]
+    .reg  r478: index
+    .reg  r479: vcache f32[31,64]
+    .reg  r480: f32
+    .reg  r481: index
+    .reg  r482: vcache f32[31,64]
+    .reg  r483: index
+    .reg  r484: vcache f32[31,64]
+    .reg  r485: index
+    .reg  r486: vcache f32[31,64]
+    .reg  r487: index
+    .reg  r488: vcache f32[1,64]
+    .reg  r489: index
+    .reg  r490: vcache f32[1,64]
+    .reg  r491, r492: f32
+    .reg  r493: view ddr bf16[32,64] stride[512,1] write
+    .reg  r494, r495: f32
+    .reg  r496: view ddr bf16[32,64] stride[512,1] write
+    .reg  r497, r498: f32
+    .reg  r499: view ddr bf16[32,64] stride[512,1] write
+    .reg  r500, r501: f32
+    .reg  r502: view ddr bf16[32,64] stride[512,1] write
+        sys.query    r2 = core_rank
+        s.constant   r3 = 2:index
+        s.mul        r4 = r2, r3
+        s.constant   r5 = 0:index
+        s.constant   r6 = 2:index
+        s.constant   r7 = 1:index
+        for          r5, r6, r7
+        .region
+        L0(r8: index):
+            s.add        r9 = r4, r8
+            s.constant   r10 = 64:index
+            s.mul        r11 = r9, r10
+            s.constant   r12 = 2:index
+            s.mul        r13 = r11, r12
+            s.ptradd     r14 = r0, r13
+            view.bind_ptr r15 = r14
+            s.constant   r16 = 0:index
+            s.add        r17 = r16, r11
+            s.constant   r18 = 2:index
+            s.mul        r19 = r17, r18
+            s.ptradd     r20 = r1, r19
+            view.bind_ptr r21 = r20
+            s.constant   r22 = 256:index
+            s.add        r23 = r22, r11
+            s.constant   r24 = 2:index
+            s.mul        r25 = r23, r24
+            s.ptradd     r26 = r1, r25
+            view.bind_ptr r27 = r26
+            s.constant   r28 = 16384:index
+            s.add        r29 = r28, r11
+            s.constant   r30 = 2:index
+            s.mul        r31 = r29, r30
+            s.ptradd     r32 = r1, r31
+            view.bind_ptr r33 = r32
+            s.constant   r34 = 16640:index
+            s.add        r35 = r34, r11
+            s.constant   r36 = 2:index
+            s.mul        r37 = r35, r36
+            s.ptradd     r38 = r1, r37
+            view.bind_ptr r39 = r38
+            vec.cache    r40
+            vec.cache    r41
+            vec.cache    r42
+            vec.cache    r43
+            vec.cache    r44
+            vec.cache    r45
+            vec.cache    r46
+            vec.cache    r47
+            vec.cache    r48
+            vec.cache    r49
+            vec.cache    r50
+            vec.cache    r51
+            vec.cache    r52
+            vec.cache    r53
+            vec.cache    r54
+            vec.cache    r55
+            view.subview r56 = r15, [0, 0, 0]
+            vec.load     r40, r56
+            view.subview r57 = r15, [0, 0, 0]
+            vec.load     r41, r57
+            view.subview r58 = r15, [1, 0, 0]
+            vec.load     r42, r58
+            q.cvt        r43, r40, rne
+            q.cvt        r44, r41, rne
+            q.cvt        r45, r42, rne
+            s.constant   r59 = 0.75:f32
+            vec.mul      r46, r43, r59, _, $1
+            s.constant   r60 = 0:index
+            vec.cache.rows r61 = r55, r60
+            s.constant   r62 = 0:index
+            vec.cache.rows r63 = r43, r62
+            s.constant   r64 = 0.25:f32
+            vec.mul      r61, r63, r64, _, $1
+            s.constant   r65 = 1:index
+            vec.cache.rows r66 = r46, r65
+            s.constant   r67 = 1:index
+            vec.cache.rows r68 = r46, r67
+            s.constant   r69 = 0:index
+            vec.cache.rows r70 = r55, r69
+            vec.add      r66, r68, r70, _, $1
+            s.constant   r71 = 0:index
+            vec.cache.rows r72 = r46, r71
+            s.constant   r73 = 0:index
+            vec.cache.rows r74 = r43, r73
+            vec.copy     r72, r74
+            s.constant   r75 = 0.75:f32
+            vec.mul      r47, r43, r75, _, $1
+            s.constant   r76 = 0:index
+            vec.cache.rows r77 = r55, r76
+            s.constant   r78 = 1:index
+            vec.cache.rows r79 = r43, r78
+            s.constant   r80 = 0.25:f32
+            vec.mul      r77, r79, r80, _, $1
+            s.constant   r81 = 0:index
+            vec.cache.rows r82 = r47, r81
+            s.constant   r83 = 0:index
+            vec.cache.rows r84 = r47, r83
+            s.constant   r85 = 0:index
+            vec.cache.rows r86 = r55, r85
+            vec.add      r82, r84, r86, _, $1
+            s.constant   r87 = 31:index
+            vec.cache.rows r88 = r47, r87
+            s.constant   r89 = 31:index
+            vec.cache.rows r90 = r43, r89
+            vec.copy     r88, r90
+            s.constant   r91 = 0.75:f32
+            vec.mul      r48, r44, r91, _, $1
+            s.constant   r92 = 0:index
+            vec.cache.rows r93 = r55, r92
+            s.constant   r94 = 0:index
+            vec.cache.rows r95 = r44, r94
+            s.constant   r96 = 0.25:f32
+            vec.mul      r93, r95, r96, _, $1
+            s.constant   r97 = 1:index
+            vec.cache.rows r98 = r48, r97
+            s.constant   r99 = 1:index
+            vec.cache.rows r100 = r48, r99
+            s.constant   r101 = 0:index
+            vec.cache.rows r102 = r55, r101
+            vec.add      r98, r100, r102, _, $1
+            s.constant   r103 = 0:index
+            vec.cache.rows r104 = r48, r103
+            s.constant   r105 = 0:index
+            vec.cache.rows r106 = r44, r105
+            vec.copy     r104, r106
+            s.constant   r107 = 0.75:f32
+            vec.mul      r49, r44, r107, _, $1
+            s.constant   r108 = 0:index
+            vec.cache.rows r109 = r55, r108
+            s.constant   r110 = 1:index
+            vec.cache.rows r111 = r44, r110
+            s.constant   r112 = 0.25:f32
+            vec.mul      r109, r111, r112, _, $1
+            s.constant   r113 = 0:index
+            vec.cache.rows r114 = r49, r113
+            s.constant   r115 = 0:index
+            vec.cache.rows r116 = r49, r115
+            s.constant   r117 = 0:index
+            vec.cache.rows r118 = r55, r117
+            vec.add      r114, r116, r118, _, $1
+            s.constant   r119 = 31:index
+            vec.cache.rows r120 = r49, r119
+            s.constant   r121 = 31:index
+            vec.cache.rows r122 = r44, r121
+            vec.copy     r120, r122
+            s.constant   r123 = 0.75:f32
+            vec.mul      r50, r45, r123, _, $1
+            s.constant   r124 = 0:index
+            vec.cache.rows r125 = r55, r124
+            s.constant   r126 = 0:index
+            vec.cache.rows r127 = r45, r126
+            s.constant   r128 = 0.25:f32
+            vec.mul      r125, r127, r128, _, $1
+            s.constant   r129 = 1:index
+            vec.cache.rows r130 = r50, r129
+            s.constant   r131 = 1:index
+            vec.cache.rows r132 = r50, r131
+            s.constant   r133 = 0:index
+            vec.cache.rows r134 = r55, r133
+            vec.add      r130, r132, r134, _, $1
+            s.constant   r135 = 0:index
+            vec.cache.rows r136 = r50, r135
+            s.constant   r137 = 0:index
+            vec.cache.rows r138 = r45, r137
+            vec.copy     r136, r138
+            s.constant   r139 = 0.75:f32
+            vec.mul      r51, r45, r139, _, $1
+            s.constant   r140 = 0:index
+            vec.cache.rows r141 = r55, r140
+            s.constant   r142 = 1:index
+            vec.cache.rows r143 = r45, r142
+            s.constant   r144 = 0.25:f32
+            vec.mul      r141, r143, r144, _, $1
+            s.constant   r145 = 0:index
+            vec.cache.rows r146 = r51, r145
+            s.constant   r147 = 0:index
+            vec.cache.rows r148 = r51, r147
+            s.constant   r149 = 0:index
+            vec.cache.rows r150 = r55, r149
+            vec.add      r146, r148, r150, _, $1
+            s.constant   r151 = 31:index
+            vec.cache.rows r152 = r51, r151
+            s.constant   r153 = 31:index
+            vec.cache.rows r154 = r45, r153
+            vec.copy     r152, r154
+            s.constant   r155 = 0.25:f32
+            vec.mul      r52, r46, r155, _, $1
+            s.constant   r156 = 0.75:f32
+            vec.mul      r55, r48, r156, _, $1
+            vec.add      r52, r52, r55, _, $1
+            q.cvt        r54, r52, rne
+            view.subview r157 = r21, [0, 0]
+            vec.store    r157, r54
+            s.constant   r158 = 0.25:f32
+            vec.mul      r53, r47, r158, _, $1
+            s.constant   r159 = 0.75:f32
+            vec.mul      r55, r49, r159, _, $1
+            vec.add      r53, r53, r55, _, $1
+            q.cvt        r54, r53, rne
+            view.subview r160 = r27, [0, 0]
+            vec.store    r160, r54
+            s.constant   r161 = 0.75:f32
+            vec.mul      r52, r48, r161, _, $1
+            s.constant   r162 = 0.25:f32
+            vec.mul      r55, r50, r162, _, $1
+            vec.add      r52, r52, r55, _, $1
+            q.cvt        r54, r52, rne
+            view.subview r163 = r33, [0, 0]
+            vec.store    r163, r54
+            s.constant   r164 = 0.75:f32
+            vec.mul      r53, r49, r164, _, $1
+            s.constant   r165 = 0.25:f32
+            vec.mul      r55, r51, r165, _, $1
+            vec.add      r53, r53, r55, _, $1
+            q.cvt        r54, r53, rne
+            view.subview r166 = r39, [0, 0]
+            vec.store    r166, r54
+            s.constant   r167 = 1:index
+            s.constant   r168 = 31:index
+            s.constant   r169 = 1:index
+            for          r167, r168, r169
+            .region
+            L0(r170: index):
+                s.constant   r171 = 2:index
+                s.mul        r172 = r11, r171
+                s.ptradd     r173 = r0, r172
+                view.bind_ptr r174 = r173
+                s.constant   r175 = 0:index
+                s.add        r176 = r175, r11
+                s.constant   r177 = 2:index
+                s.mul        r178 = r176, r177
+                s.ptradd     r179 = r1, r178
+                view.bind_ptr r180 = r179
+                s.constant   r181 = 256:index
+                s.add        r182 = r181, r11
+                s.constant   r183 = 2:index
+                s.mul        r184 = r182, r183
+                s.ptradd     r185 = r1, r184
+                view.bind_ptr r186 = r185
+                s.constant   r187 = 16384:index
+                s.add        r188 = r187, r11
+                s.constant   r189 = 2:index
+                s.mul        r190 = r188, r189
+                s.ptradd     r191 = r1, r190
+                view.bind_ptr r192 = r191
+                s.constant   r193 = 16640:index
+                s.add        r194 = r193, r11
+                s.constant   r195 = 2:index
+                s.mul        r196 = r194, r195
+                s.ptradd     r197 = r1, r196
+                view.bind_ptr r198 = r197
+                vec.cache    r199
+                vec.cache    r200
+                vec.cache    r201
+                vec.cache    r202
+                vec.cache    r203
+                vec.cache    r204
+                vec.cache    r205
+                vec.cache    r206
+                vec.cache    r207
+                vec.cache    r208
+                vec.cache    r209
+                vec.cache    r210
+                vec.cache    r211
+                vec.cache    r212
+                vec.cache    r213
+                vec.cache    r214
+                s.constant   r215 = 1:index
+                s.sub        r216 = r170, r215
+                s.constant   r217 = 0:index
+                s.constant   r218 = 0:index
+                view.subview_dyn r219 = r174, r216, r217, r218
+                vec.load     r199, r219
+                s.constant   r220 = 0:index
+                s.constant   r221 = 0:index
+                view.subview_dyn r222 = r174, r170, r220, r221
+                vec.load     r200, r222
+                s.constant   r223 = 1:index
+                s.add        r224 = r170, r223
+                s.constant   r225 = 0:index
+                s.constant   r226 = 0:index
+                view.subview_dyn r227 = r174, r224, r225, r226
+                vec.load     r201, r227
+                q.cvt        r202, r199, rne
+                q.cvt        r203, r200, rne
+                q.cvt        r204, r201, rne
+                s.constant   r228 = 0.75:f32
+                vec.mul      r205, r202, r228, _, $1
+                s.constant   r229 = 0:index
+                vec.cache.rows r230 = r214, r229
+                s.constant   r231 = 0:index
+                vec.cache.rows r232 = r202, r231
+                s.constant   r233 = 0.25:f32
+                vec.mul      r230, r232, r233, _, $1
+                s.constant   r234 = 1:index
+                vec.cache.rows r235 = r205, r234
+                s.constant   r236 = 1:index
+                vec.cache.rows r237 = r205, r236
+                s.constant   r238 = 0:index
+                vec.cache.rows r239 = r214, r238
+                vec.add      r235, r237, r239, _, $1
+                s.constant   r240 = 0:index
+                vec.cache.rows r241 = r205, r240
+                s.constant   r242 = 0:index
+                vec.cache.rows r243 = r202, r242
+                vec.copy     r241, r243
+                s.constant   r244 = 0.75:f32
+                vec.mul      r206, r202, r244, _, $1
+                s.constant   r245 = 0:index
+                vec.cache.rows r246 = r214, r245
+                s.constant   r247 = 1:index
+                vec.cache.rows r248 = r202, r247
+                s.constant   r249 = 0.25:f32
+                vec.mul      r246, r248, r249, _, $1
+                s.constant   r250 = 0:index
+                vec.cache.rows r251 = r206, r250
+                s.constant   r252 = 0:index
+                vec.cache.rows r253 = r206, r252
+                s.constant   r254 = 0:index
+                vec.cache.rows r255 = r214, r254
+                vec.add      r251, r253, r255, _, $1
+                s.constant   r256 = 31:index
+                vec.cache.rows r257 = r206, r256
+                s.constant   r258 = 31:index
+                vec.cache.rows r259 = r202, r258
+                vec.copy     r257, r259
+                s.constant   r260 = 0.75:f32
+                vec.mul      r207, r203, r260, _, $1
+                s.constant   r261 = 0:index
+                vec.cache.rows r262 = r214, r261
+                s.constant   r263 = 0:index
+                vec.cache.rows r264 = r203, r263
+                s.constant   r265 = 0.25:f32
+                vec.mul      r262, r264, r265, _, $1
+                s.constant   r266 = 1:index
+                vec.cache.rows r267 = r207, r266
+                s.constant   r268 = 1:index
+                vec.cache.rows r269 = r207, r268
+                s.constant   r270 = 0:index
+                vec.cache.rows r271 = r214, r270
+                vec.add      r267, r269, r271, _, $1
+                s.constant   r272 = 0:index
+                vec.cache.rows r273 = r207, r272
+                s.constant   r274 = 0:index
+                vec.cache.rows r275 = r203, r274
+                vec.copy     r273, r275
+                s.constant   r276 = 0.75:f32
+                vec.mul      r208, r203, r276, _, $1
+                s.constant   r277 = 0:index
+                vec.cache.rows r278 = r214, r277
+                s.constant   r279 = 1:index
+                vec.cache.rows r280 = r203, r279
+                s.constant   r281 = 0.25:f32
+                vec.mul      r278, r280, r281, _, $1
+                s.constant   r282 = 0:index
+                vec.cache.rows r283 = r208, r282
+                s.constant   r284 = 0:index
+                vec.cache.rows r285 = r208, r284
+                s.constant   r286 = 0:index
+                vec.cache.rows r287 = r214, r286
+                vec.add      r283, r285, r287, _, $1
+                s.constant   r288 = 31:index
+                vec.cache.rows r289 = r208, r288
+                s.constant   r290 = 31:index
+                vec.cache.rows r291 = r203, r290
+                vec.copy     r289, r291
+                s.constant   r292 = 0.75:f32
+                vec.mul      r209, r204, r292, _, $1
+                s.constant   r293 = 0:index
+                vec.cache.rows r294 = r214, r293
+                s.constant   r295 = 0:index
+                vec.cache.rows r296 = r204, r295
+                s.constant   r297 = 0.25:f32
+                vec.mul      r294, r296, r297, _, $1
+                s.constant   r298 = 1:index
+                vec.cache.rows r299 = r209, r298
+                s.constant   r300 = 1:index
+                vec.cache.rows r301 = r209, r300
+                s.constant   r302 = 0:index
+                vec.cache.rows r303 = r214, r302
+                vec.add      r299, r301, r303, _, $1
+                s.constant   r304 = 0:index
+                vec.cache.rows r305 = r209, r304
+                s.constant   r306 = 0:index
+                vec.cache.rows r307 = r204, r306
+                vec.copy     r305, r307
+                s.constant   r308 = 0.75:f32
+                vec.mul      r210, r204, r308, _, $1
+                s.constant   r309 = 0:index
+                vec.cache.rows r310 = r214, r309
+                s.constant   r311 = 1:index
+                vec.cache.rows r312 = r204, r311
+                s.constant   r313 = 0.25:f32
+                vec.mul      r310, r312, r313, _, $1
+                s.constant   r314 = 0:index
+                vec.cache.rows r315 = r210, r314
+                s.constant   r316 = 0:index
+                vec.cache.rows r317 = r210, r316
+                s.constant   r318 = 0:index
+                vec.cache.rows r319 = r214, r318
+                vec.add      r315, r317, r319, _, $1
+                s.constant   r320 = 31:index
+                vec.cache.rows r321 = r210, r320
+                s.constant   r322 = 31:index
+                vec.cache.rows r323 = r204, r322
+                vec.copy     r321, r323
+                s.constant   r324 = 0.25:f32
+                vec.mul      r211, r205, r324, _, $1
+                s.constant   r325 = 0.75:f32
+                vec.mul      r214, r207, r325, _, $1
+                vec.add      r211, r211, r214, _, $1
+                q.cvt        r213, r211, rne
+                s.constant   r326 = 64:index
+                s.mul        r327 = r170, r326
+                s.constant   r328 = 0:index
+                view.subview_dyn r329 = r180, r327, r328
+                vec.store    r329, r213
+                s.constant   r330 = 0.25:f32
+                vec.mul      r212, r206, r330, _, $1
+                s.constant   r331 = 0.75:f32
+                vec.mul      r214, r208, r331, _, $1
+                vec.add      r212, r212, r214, _, $1
+                q.cvt        r213, r212, rne
+                s.constant   r332 = 64:index
+                s.mul        r333 = r170, r332
+                s.constant   r334 = 0:index
+                view.subview_dyn r335 = r186, r333, r334
+                vec.store    r335, r213
+                s.constant   r336 = 0.75:f32
+                vec.mul      r211, r207, r336, _, $1
+                s.constant   r337 = 0.25:f32
+                vec.mul      r214, r209, r337, _, $1
+                vec.add      r211, r211, r214, _, $1
+                q.cvt        r213, r211, rne
+                s.constant   r338 = 64:index
+                s.mul        r339 = r170, r338
+                s.constant   r340 = 0:index
+                view.subview_dyn r341 = r192, r339, r340
+                vec.store    r341, r213
+                s.constant   r342 = 0.75:f32
+                vec.mul      r212, r208, r342, _, $1
+                s.constant   r343 = 0.25:f32
+                vec.mul      r214, r210, r343, _, $1
+                vec.add      r212, r212, r214, _, $1
+                q.cvt        r213, r212, rne
+                s.constant   r344 = 64:index
+                s.mul        r345 = r170, r344
+                s.constant   r346 = 0:index
+                view.subview_dyn r347 = r198, r345, r346
+                vec.store    r347, r213
+                yield
+            .end
+            s.constant   r348 = 2:index
+            s.mul        r349 = r11, r348
+            s.ptradd     r350 = r0, r349
+            view.bind_ptr r351 = r350
+            s.constant   r352 = 0:index
+            s.add        r353 = r352, r11
+            s.constant   r354 = 2:index
+            s.mul        r355 = r353, r354
+            s.ptradd     r356 = r1, r355
+            view.bind_ptr r357 = r356
+            s.constant   r358 = 256:index
+            s.add        r359 = r358, r11
+            s.constant   r360 = 2:index
+            s.mul        r361 = r359, r360
+            s.ptradd     r362 = r1, r361
+            view.bind_ptr r363 = r362
+            s.constant   r364 = 16384:index
+            s.add        r365 = r364, r11
+            s.constant   r366 = 2:index
+            s.mul        r367 = r365, r366
+            s.ptradd     r368 = r1, r367
+            view.bind_ptr r369 = r368
+            s.constant   r370 = 16640:index
+            s.add        r371 = r370, r11
+            s.constant   r372 = 2:index
+            s.mul        r373 = r371, r372
+            s.ptradd     r374 = r1, r373
+            view.bind_ptr r375 = r374
+            vec.cache    r376
+            vec.cache    r377
+            vec.cache    r378
+            vec.cache    r379
+            vec.cache    r380
+            vec.cache    r381
+            vec.cache    r382
+            vec.cache    r383
+            vec.cache    r384
+            vec.cache    r385
+            vec.cache    r386
+            vec.cache    r387
+            vec.cache    r388
+            vec.cache    r389
+            vec.cache    r390
+            vec.cache    r391
+            view.subview r392 = r351, [30, 0, 0]
+            vec.load     r376, r392
+            view.subview r393 = r351, [31, 0, 0]
+            vec.load     r377, r393
+            view.subview r394 = r351, [31, 0, 0]
+            vec.load     r378, r394
+            q.cvt        r379, r376, rne
+            q.cvt        r380, r377, rne
+            q.cvt        r381, r378, rne
+            s.constant   r395 = 0.75:f32
+            vec.mul      r382, r379, r395, _, $1
+            s.constant   r396 = 0:index
+            vec.cache.rows r397 = r391, r396
+            s.constant   r398 = 0:index
+            vec.cache.rows r399 = r379, r398
+            s.constant   r400 = 0.25:f32
+            vec.mul      r397, r399, r400, _, $1
+            s.constant   r401 = 1:index
+            vec.cache.rows r402 = r382, r401
+            s.constant   r403 = 1:index
+            vec.cache.rows r404 = r382, r403
+            s.constant   r405 = 0:index
+            vec.cache.rows r406 = r391, r405
+            vec.add      r402, r404, r406, _, $1
+            s.constant   r407 = 0:index
+            vec.cache.rows r408 = r382, r407
+            s.constant   r409 = 0:index
+            vec.cache.rows r410 = r379, r409
+            vec.copy     r408, r410
+            s.constant   r411 = 0.75:f32
+            vec.mul      r383, r379, r411, _, $1
+            s.constant   r412 = 0:index
+            vec.cache.rows r413 = r391, r412
+            s.constant   r414 = 1:index
+            vec.cache.rows r415 = r379, r414
+            s.constant   r416 = 0.25:f32
+            vec.mul      r413, r415, r416, _, $1
+            s.constant   r417 = 0:index
+            vec.cache.rows r418 = r383, r417
+            s.constant   r419 = 0:index
+            vec.cache.rows r420 = r383, r419
+            s.constant   r421 = 0:index
+            vec.cache.rows r422 = r391, r421
+            vec.add      r418, r420, r422, _, $1
+            s.constant   r423 = 31:index
+            vec.cache.rows r424 = r383, r423
+            s.constant   r425 = 31:index
+            vec.cache.rows r426 = r379, r425
+            vec.copy     r424, r426
+            s.constant   r427 = 0.75:f32
+            vec.mul      r384, r380, r427, _, $1
+            s.constant   r428 = 0:index
+            vec.cache.rows r429 = r391, r428
+            s.constant   r430 = 0:index
+            vec.cache.rows r431 = r380, r430
+            s.constant   r432 = 0.25:f32
+            vec.mul      r429, r431, r432, _, $1
+            s.constant   r433 = 1:index
+            vec.cache.rows r434 = r384, r433
+            s.constant   r435 = 1:index
+            vec.cache.rows r436 = r384, r435
+            s.constant   r437 = 0:index
+            vec.cache.rows r438 = r391, r437
+            vec.add      r434, r436, r438, _, $1
+            s.constant   r439 = 0:index
+            vec.cache.rows r440 = r384, r439
+            s.constant   r441 = 0:index
+            vec.cache.rows r442 = r380, r441
+            vec.copy     r440, r442
+            s.constant   r443 = 0.75:f32
+            vec.mul      r385, r380, r443, _, $1
+            s.constant   r444 = 0:index
+            vec.cache.rows r445 = r391, r444
+            s.constant   r446 = 1:index
+            vec.cache.rows r447 = r380, r446
+            s.constant   r448 = 0.25:f32
+            vec.mul      r445, r447, r448, _, $1
+            s.constant   r449 = 0:index
+            vec.cache.rows r450 = r385, r449
+            s.constant   r451 = 0:index
+            vec.cache.rows r452 = r385, r451
+            s.constant   r453 = 0:index
+            vec.cache.rows r454 = r391, r453
+            vec.add      r450, r452, r454, _, $1
+            s.constant   r455 = 31:index
+            vec.cache.rows r456 = r385, r455
+            s.constant   r457 = 31:index
+            vec.cache.rows r458 = r380, r457
+            vec.copy     r456, r458
+            s.constant   r459 = 0.75:f32
+            vec.mul      r386, r381, r459, _, $1
+            s.constant   r460 = 0:index
+            vec.cache.rows r461 = r391, r460
+            s.constant   r462 = 0:index
+            vec.cache.rows r463 = r381, r462
+            s.constant   r464 = 0.25:f32
+            vec.mul      r461, r463, r464, _, $1
+            s.constant   r465 = 1:index
+            vec.cache.rows r466 = r386, r465
+            s.constant   r467 = 1:index
+            vec.cache.rows r468 = r386, r467
+            s.constant   r469 = 0:index
+            vec.cache.rows r470 = r391, r469
+            vec.add      r466, r468, r470, _, $1
+            s.constant   r471 = 0:index
+            vec.cache.rows r472 = r386, r471
+            s.constant   r473 = 0:index
+            vec.cache.rows r474 = r381, r473
+            vec.copy     r472, r474
+            s.constant   r475 = 0.75:f32
+            vec.mul      r387, r381, r475, _, $1
+            s.constant   r476 = 0:index
+            vec.cache.rows r477 = r391, r476
+            s.constant   r478 = 1:index
+            vec.cache.rows r479 = r381, r478
+            s.constant   r480 = 0.25:f32
+            vec.mul      r477, r479, r480, _, $1
+            s.constant   r481 = 0:index
+            vec.cache.rows r482 = r387, r481
+            s.constant   r483 = 0:index
+            vec.cache.rows r484 = r387, r483
+            s.constant   r485 = 0:index
+            vec.cache.rows r486 = r391, r485
+            vec.add      r482, r484, r486, _, $1
+            s.constant   r487 = 31:index
+            vec.cache.rows r488 = r387, r487
+            s.constant   r489 = 31:index
+            vec.cache.rows r490 = r381, r489
+            vec.copy     r488, r490
+            s.constant   r491 = 0.25:f32
+            vec.mul      r388, r382, r491, _, $1
+            s.constant   r492 = 0.75:f32
+            vec.mul      r391, r384, r492, _, $1
+            vec.add      r388, r388, r391, _, $1
+            q.cvt        r390, r388, rne
+            view.subview r493 = r357, [1984, 0]
+            vec.store    r493, r390
+            s.constant   r494 = 0.25:f32
+            vec.mul      r389, r383, r494, _, $1
+            s.constant   r495 = 0.75:f32
+            vec.mul      r391, r385, r495, _, $1
+            vec.add      r389, r389, r391, _, $1
+            q.cvt        r390, r389, rne
+            view.subview r496 = r363, [1984, 0]
+            vec.store    r496, r390
+            s.constant   r497 = 0.75:f32
+            vec.mul      r388, r384, r497, _, $1
+            s.constant   r498 = 0.25:f32
+            vec.mul      r391, r386, r498, _, $1
+            vec.add      r388, r388, r391, _, $1
+            q.cvt        r390, r388, rne
+            view.subview r499 = r369, [1984, 0]
+            vec.store    r499, r390
+            s.constant   r500 = 0.75:f32
+            vec.mul      r389, r385, r500, _, $1
+            s.constant   r501 = 0.25:f32
+            vec.mul      r391, r387, r501, _, $1
+            vec.add      r389, r389, r391, _, $1
+            q.cvt        r390, r389, rne
+            view.subview r502 = r375, [1984, 0]
+            vec.store    r502, r390
+            yield
+        .end
+        return
+    .endfunc
+    .func step()
+    .reg  r0, r1: ptr ddr
+        mem.addr     r0 = @in_x
+        mem.addr     r1 = @out_y
+        call         r0, r1, @resize_bilinear2_big2
+        return
+    .endfunc
+.endmodule

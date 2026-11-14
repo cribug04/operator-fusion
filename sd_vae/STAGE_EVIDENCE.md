@@ -94,4 +94,4 @@ done
 
 ## 6. 结论
 
-**平台侧五段全部通过**：设备遍可复现（`.cvx` 逐字节确定）、docc 打包可复现（ELF 逐字节确定）、doctor 拒收 0、反汇编 0 unknown 且字节全覆盖。真机数值验证见 `docs/SD_VAE_REAL_DEVICE_VERIFICATION.md`（等待板卡访问）。
+**平台侧五段全部通过**：设备遍可复现（`.cvx` 逐字节确定）、docc 打包可复现（ELF 逐字节确定）、doctor 拒收 0、反汇编 0 unknown 且字节全覆盖。真机数值验证见 `docs/SD_VAE_REAL_DEVICE_VERIFICATION.md`（队友已报告通过，原始输出尚待入库；详见仓库 README §0）。

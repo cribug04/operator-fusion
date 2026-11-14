@@ -2,7 +2,7 @@
 
 **日期**：2026-11-14
 **目标**：把 SD1.5 的 VAE decoder（latent `[4,64,64]` → 512×512 RGB 图像）完整放到 Calculet NPU 上跑，作为赛题路线 B（端到端模型移植）的第一步。
-**当前状态**：✅ 平台侧全部打通（2026-11-14 晚按审查修复两处生成器错误后重新通过，见 §5.1 注）（设备遍编译 / docc calbin / doctor 拒收 0 / 本地黄金仿真与 diffusers fp32 参考 PSNR ≈ 52.8 dB）；⏳ 真机数值等待板卡登录（队友在办）。
+**当前状态**：✅ 平台侧全部打通（2026-11-14 晚按审查修复两处生成器错误后重新通过，见 §5.1 注）（设备遍编译 / docc calbin / doctor 拒收 0 / 本地黄金仿真与 diffusers fp32 参考 PSNR ≈ 52.8 dB）；队友已报告真机通过；原始输出尚待入库，数字与证据边界见 [README](../README.md) §0。
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## 2. 交付物
 
-> 路径说明：下表的“工作区”指比赛用工作目录（本机 `C:/Users/10463/Desktop/bohack/`）；**在本 Gitee 仓库里，`_recon/work/sd_vae/xxx` 对应 `sd_vae/xxx`**（`gen/`、`kernels/`、`evidence/`、`onboard/`、`SMOKE.md`、`STAGE_EVIDENCE.md`），`docs/` 下是本文与真机手册。
+> 路径说明：下表的“工作区”指比赛用工作目录（队友本机工作目录）；**在本 Gitee 仓库里，`_recon/work/sd_vae/xxx` 对应 `sd_vae/xxx`**（`gen/`、`kernels/`、`evidence/`、`onboard/`、`SMOKE.md`、`STAGE_EVIDENCE.md`），`docs/` 下是本文与真机手册。
 
 | 路径（工作区） | 内容 |
 | --- | --- |
