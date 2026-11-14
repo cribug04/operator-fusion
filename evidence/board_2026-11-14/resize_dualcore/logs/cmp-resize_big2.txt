@@ -1,0 +1,10 @@
+[resize_big2] elements        : 1048576
+[resize_big2] exact matches   : 1048576 / 1048576  (100.000000%)
+[resize_big2] diff elements   : 0
+[resize_big2] max |diff| f32  : 0.000000e+00
+[resize_big2] mean|diff| f32  : 0.000000e+00
+[resize_big2] max diff (bf16 ULP, approx): 0.000
+[resize_big2] mean diff (bf16 ULP, approx): 0.000
+[resize_big2] cosine          : 1.000000000
+[resize_big2] criterion       : exact
+[resize_big2] VERDICT: EXACT（逐位相同）

@@ -1,0 +1,12 @@
+calbin /home/calculet1/rz2_pkg/resize_big2
+13:25:50.906 INFO    [RT] device.rs:250 启动流带：关（原因：带锁 /opt/data/locks/board-0000:07:00.0-band.lock 拿不到，别的进程拿着或打不开）
+13:25:50.906 INFO    [RT] device.rs:251 成对写 CSR：开（相邻两条两核写并成一条命令 21）
+13:25:50.906 INFO    [RT] device.rs:252 精简 CSR：开（链里第 1 节起不重写不变的 icsr；成对写时落单的那条自配成一条命令 21）
+13:25:50.906 INFO    [RT] deployment.rs:344 [host runtime] --> deploying model [resize_big2_pkg]
+13:25:50.906 INFO    [RT] deployment.rs:350 [host runtime] --> resize_big2_pkg deploy completed
+  configure 完成（这一次覆盖 calbin 里的全部模型）
+  写入 524288 字节 -> 张量 `in_x`
+  已提交，等完成…
+  完成
+  读出 2097152 字节 -> /home/calculet1/rz2_pkg/perf_out/resize_big2_run5.bin
+  前 8 个 bf16: 0.8984 -0.6680 -0.2129 -0.6094 0.4727 0.8750 0.8398 -0.9766

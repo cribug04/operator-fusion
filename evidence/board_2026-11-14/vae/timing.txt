@@ -1,0 +1,6 @@
+pkg_a rc=0 0.9s
+pkg_b1 rc=0 1.0s
+pkg_b2a rc=0 3.9s
+pkg_b2b rc=0 0.3s
+pkg_c rc=0 28.4s
+total 34.6s
