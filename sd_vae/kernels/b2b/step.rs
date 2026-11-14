@@ -14,6 +14,7 @@ pub fn step() {
     // 所有图像 slot 一次清零：边框之后不再被写
     if core_rank() == 0 {
         k_fill0(act().at(0).cast(), 4225);
+        k_fill0(out_y().cast(), 4225);
     }
     sync_cores();
     if core_rank() == 0 { k_up_128_256_p512_512(in_x().add(0).cast(), act().at(0).add(0).cast()); }

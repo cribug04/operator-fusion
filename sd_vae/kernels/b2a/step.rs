@@ -16,6 +16,7 @@ pub fn step() {
         k_fill0(act().at(65536).cast(), 1089);
         k_fill0(act().at(17907712).cast(), 1089);
         k_fill0(act().at(35749888).cast(), 1089);
+        k_fill0(out_y().cast(), 1089);
     }
     sync_cores();
     if core_rank() == 0 { k_nhwc2nchw_128_512_p512(in_x().cast(), act().at(53592064).cast()); }

@@ -1,0 +1,1 @@
+error: CalVX ⇒ ELF：出 ELF 失败：riscvc：链接：main0.o：.text 处到 `.LBB1_1` 的距离 -1115512 超出 21 位（类型 17）

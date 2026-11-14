@@ -1,0 +1,20 @@
+[package]
+name = "docc-bug-gn"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+step = []
+# sram：把 group_norm 的展开上界 NH 改成从 SRAM 读的运行期值（绕法，见 SMOKE.md §4）
+sram = []
+
+[dependencies]
+calblas = { path = "../../.." }
+caldnn = { path = "../../../../calDNN" }
+npu = { path = "../../../../npu" }
+
+[workspace]

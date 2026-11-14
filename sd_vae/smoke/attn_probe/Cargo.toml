@@ -1,0 +1,21 @@
+[package]
+name = "sd-vae-attn-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+step = []
+# d512：用 calblas::attention! 直接实例化 D = 512（预期被拒，用来实证头维上限）
+d512 = []
+d256 = []
+
+[dependencies]
+calblas = { path = "../../.." }
+caldnn = { path = "../../../../calDNN" }
+npu = { path = "../../../../npu" }
+
+[workspace]

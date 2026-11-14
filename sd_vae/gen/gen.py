@@ -767,6 +767,12 @@ def gen_step(P):
     L.append('    if core_rank() == 0 {')
     for (o, blocks) in P.fills:
         L.append(f'        k_fill0(act().at({o}).cast(), {blocks});')
+    # 输出声明的边框也清零：段间用裸字节衔接（out_a.bin 直接喂 b1 的 in_x），
+    # 而 conv 只写内部区域，边框不先清零就会把上一段内存里的残留当 padding 读进去。
+    for n in P.order:
+        b = P.bufs[n]
+        if b['klass'][0] == 'output':
+            L.append(f'        k_fill0(out_y().cast(), {b["size"] // FILL_BLK});')
     L.append('    }')
     L.append('    sync_cores();')
 

@@ -13,7 +13,7 @@
 | 程序划分 | 5 段 CalVX 整步程序（`a → b1 → b2a → b2b → c`），一段一个 `.cvx` / 一个 calbin |
 | 设备遍 | 5/5 `cargo build --lib --features step --target dopamine-unknown-none-cvx` exit 0 |
 | docc | 5/5 `docc calbin from-calvx` exit 0；5/5 `docc calbin doctor` **拒收 0 条**（各 2 条 ping/pong 同址警告，单次推理无影响） |
-| 权重 | 从 SD1.5 **fp32** safetensors 直接重排为 bf16 参数块，5 段共 **96.3 MB**；打包器自校验 138 个张量逐字节回读一致（bad=0） |
+| 权重 | 从 SD1.5 **fp32** safetensors 直接重排为 bf16 参数块，5 段共 **100.7 MB**；打包器自校验 138 个张量逐字节回读一致（bad=0） |
 | 本地数值 | 用 torch 按 `step.rs` 的算子顺序 + 我们的布局**仿真同一份程序**，与 diffusers fp32 参考：整图 **PSNR 52.83 dB**、max\|Δ\| 0.0473、mean\|Δ\| 0.00336；图像统计与参考几乎一致（见 §5） |
 | 真机数值 | ❌ 未验证（无板卡登录；上板包已备好，见 §7） |
 
@@ -31,7 +31,9 @@
 | `_recon/work/sd_vae/gen/emulate.py` | **黄金仿真器**（torch 执行我们的程序语义） |
 | `_recon/work/sd_vae/gen/compare_stages.py` | 逐段对 torch dump 的数值比对 |
 | `_recon/work/sd_vae/gen/host.py` | 主机侧：latent → `in_x.bin`；`out_y.bin` → 图像/PNG；图像比对 |
-| `_recon/work/sd_vae/onboard/` | 上板包：`package_all.sh`、`run_on_board.sh`、`MANIFEST.txt`、`SHA256SUMS.txt`、`sd_vae_onboard_pkg.tar.gz`（79 MB） |
+| `SD_VAE_REAL_DEVICE_VERIFICATION.md` | **真机验证手册**（逐条命令、字节数表、判据、排错表、记录模板） |
+| `_recon/work/sd_vae/onboard/` | 上板包：`package_all.sh`、`run_on_board.sh`、`MANIFEST.txt`、`SHA256SUMS.txt`、`sd_vae_onboard_pkg.tar.gz`（80 MB） |
+| `_recon/work/sd_vae/SMOKE.md` | 模板/语言实测笔记：8 个模板确切写法、`docc` 两个 bug 的完整记录与绕法、`attention!` 头维上限实证 |
 | `_recon/work/sd_vae/ref/` | torch 黄金参考（sd-ref 产出）：`REFERENCE.md`、`dumps_index.json`、`layer_table.json`、`latent.bin`、`reference_image.{bin,npy,png}` |
 | `_recon/work/sd_vae/emu_out/` | 仿真结果：`emulated_image.{npy,png}`、`compare.json`、`stage_compare.json` |
 
@@ -87,6 +89,7 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 ### 4.4 程序约定
 - `#[npu::program(chiplets = 1, cores = 2)]`；每个 `cores = 2` kernel 调用后 `sync_cores()`；`cores = 1` 的（布局/搬运/上采样）包在 `if core_rank() == 0 {}` 里再同步。
 - 所有 `@act` 偏移、参数块偏移由生成器统一分配（4 KiB 对齐），程序与打包器共用同一份 `params.json`/`plan.json`。
+- **段间靠裸字节衔接**（`out_a.bin` 直接喂下一段 `in_x`），而 conv 只写内部区域 ⇒ 每段程序开头把 `out_y` 声明的边框也清零（`fill16k`），否则会把上一段内存残留当 padding 读进去。
 
 ---
 
@@ -96,19 +99,19 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 
 | 段 | `.cvx` B | `.cvxo` B | 参数块 B | @act B | ccu0 ELF B | ccu1 ELF B | doctor |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| a | 246,653 | 39,144 | 21,483,520 | 35,241,984 | 1,414,604 | 1,049,156 | 拒收 0 |
-| b1 | 161,147 | 25,814 | 33,452,032 | 32,112,640 | 968,488 | 714,864 | 拒收 0 |
-| b2a | 71,793 | 11,909 | 28,729,344 | 53,592,064 | 398,836 | 145,552 | 拒收 0 |
-| b2b | 22,917 | 3,959 | 4,722,688 | 69,222,400 | 31,112 | 29,820 | 拒收 0 |
-| c | 278,556 | 44,512 | 12,292,096 | 650,330,112 | 1,527,952 | 959,116 | 拒收 0 |
-| 合计 | 780,066 | 125,338 | 96,279,680 | — | 4,340,992 | 2,898,508 | — |
+| a | 246,826 | 39,171 | 21,483,520 | 35,241,984 | 1,414,648 | 1,049,156 | 拒收 0 |
+| b1 | 161,321 | 25,841 | 33,452,032 | 32,112,640 | 968,536 | 714,864 | 拒收 0 |
+| b2a | 71,967 | 11,936 | 28,729,344 | 53,592,064 | 398,884 | 145,552 | 拒收 0 |
+| b2b | 23,085 | 3,984 | 4,722,688 | 69,222,400 | 31,160 | 29,820 | 拒收 0 |
+| c | 278,729 | 44,539 | 12,292,096 | 650,330,112 | 1,528,008 | 959,116 | 拒收 0 |
+| 合计 | **781,928** | **125,471** | **100,679,680** | — | **4,341,236** | **2,898,508** | — |
 
 （doctor 的 2 条警告都是 `in_x`/`out_y` 的 ping/pong 同址；单次推理不触发，重复喂输入时需要加 `double_buffer`。）
 
 补充证据（完整表见 `_recon/work/sd_vae/STAGE_EVIDENCE.md`）：
 - **确定性**：删 `target` 重编两次，5 段 `.cvx` sha256 全部逐字节相同；`docc calbin from-calvx` 跑两次，5 段两组 CCU ELF sha256 逐字节相同。
-- **反汇编**：5 段 × 2 核共 12 份 CCU ELF，`docc elf ccu disasm` 全部“走完了：每个字节都被一条认得出的指令覆盖”，**unknown 0 条**（合计 780,543 条 ccu0 / 496,845 条 ccu1）。
-- **装载量**：`docc elf ccu view` 的 `load_size` 与“各节字节和”自校验一致（a 1,408,852 / b1 963,092 / b2a 393,608 / b2b 26,072 / c 1,521,480 B，ccu0）。
+- **反汇编**：5 段 × 2 核共 12 份 CCU ELF，`docc elf ccu disasm` 全部“走完了：每个字节都被一条认得出的指令覆盖”，**unknown 0 条**（合计 780,588 条 ccu0 / 496,845 条 ccu1）。
+- **装载量**：`docc elf ccu view` 的 `load_size` 与“各节字节和”自校验一致（a 1,408,896 / b1 963,140 / b2a 393,656 / b2b 26,120 / c 1,521,536 B，ccu0）。
 
 ### 5.2 本地黄金仿真 vs diffusers fp32 参考
 
@@ -163,12 +166,17 @@ bash _recon/work/sd_vae/onboard/package_all.sh   # ⇒ /root/sd_vae/onboard_pkg 
 
 ## 7. 真机验证（怎么操作）
 
-### 7.1 包内容（`sd_vae_onboard_pkg.tar.gz`，解出 107 MB）
+### 7.1 包内容（`sd_vae_onboard_pkg.tar.gz`，80 MB，解出 107 MB；tar sha256 = `810e072071074d8b858ed78a310d1d205ee8d734aa2f501babca10d51cd363e6`）
 ```
 cal_a/ cal_b1/ cal_b2a/ cal_b2b/ cal_c/   # docc calbin 目录（含 param_blk0.bin 与 pkg_*/ 下 CCU ELF）
-in_x.bin        # stage a 的输入：latent ⇒ border bf16 [68][68][16]，147,968 B（sha256 见 SHA256SUMS.txt）
-ref_image.npy   # torch 参考图 [3,512,512] f32
-host.py run_on_board.sh
+in_x.bin        # stage a 的输入：latent ⇒ border bf16 [68][68][16]，147,968 B（sha256 1e993cf2…）
+latent.bin      # 原始 z，留档（sha256 79ed3410…）
+ref_image.npy   # torch 参考图 [3,512,512] f32（sha256 b7cc6839…）
+ref_image.png   # 参考图（人工看）
+host.py         # input / image / stage / raw / compare 工具（sha256 5f569960…）
+run_on_board.sh # 一键串 5 段 + 出图 + 对比 + 计时
+SD_VAE_REAL_DEVICE_VERIFICATION.md   # 真机手册
+MANIFEST.txt SHA256SUMS.txt
 ```
 
 ### 7.2 上板步骤
@@ -178,6 +186,7 @@ tar xzf sd_vae_onboard_pkg.tar.gz && cd onboard_pkg
 dort device -i 0 | grep "Dev  :"
 # 一条龙（脚本逐段串起来；每段 rc≠0 会停）
 ./run_on_board.sh . 0
+# 中间段自检（可选）：python3 host.py stage out_a.bin 64 512  … 见真机手册 §5
 ```
 脚本内部就是 5 条（`--in-tensor in_x --out-tensor out_y`，raw 读写):
 ```
