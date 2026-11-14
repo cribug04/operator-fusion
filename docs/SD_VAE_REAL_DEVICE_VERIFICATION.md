@@ -13,7 +13,7 @@
 | 板卡 | 任意一块可用的 Calculet NPU 板（程序 `chiplets = 1, cores = 2`，双核 CCU） |
 | 板端 | `dort` 可用（工具链 0.4.1）；驱动已装（`/dev/calculet*` 出现）；板子健康：`OS up  RT up` |
 | 主机 | 能 SSH 到板子的 Linux 机器；`dort`、`python3` + `numpy`（PIL 可选，仅用于存 PNG） |
-| 文件 | `sd_vae_onboard_pkg.tar.gz`（约 107 MB，内容见 §2） |
+| 文件 | `sd_vae_onboard_pkg.tar.gz`（约 80 MB，解出约 108 MB，内容见 §2；tar sha256 见 `sd_vae/onboard/sd_vae_onboard_pkg.tar.gz.sha256`） |
 | 资源 | 板子空闲（一次 5 段串行约几十秒~几分钟，取决于板子/排队；部署参数块 4.7–33 MB/段） |
 
 ---
@@ -36,7 +36,7 @@ sd_vae_onboard_pkg/
 解包后先校验：
 
 ```bash
-tar xzf sd_vae_onboard_pkg.tar.gz && cd sd_vae_onboard_pkg
+mkdir -p sd_vae_onboard_pkg && tar xzf sd_vae_onboard_pkg.tar.gz -C sd_vae_onboard_pkg && cd sd_vae_onboard_pkg
 sha256sum -c SHA256SUMS.txt          # 期望全部 OK
 ```
 

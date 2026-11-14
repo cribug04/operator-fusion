@@ -34,7 +34,7 @@
 | `_recon/work/sd_vae/gen/compare_stages.py` | 逐段对 torch dump 的数值比对 |
 | `_recon/work/sd_vae/gen/host.py` | 主机侧：latent → `in_x.bin`；`out_y.bin` → 图像/PNG；图像比对 |
 | `SD_VAE_REAL_DEVICE_VERIFICATION.md` | **真机验证手册**（逐条命令、字节数表、判据、排错表、记录模板） |
-| `_recon/work/sd_vae/onboard/` | 上板包：`package_all.sh`、`run_on_board.sh`、`MANIFEST.txt`、`SHA256SUMS.txt`、`sd_vae_onboard_pkg.tar.gz`（80 MB） |
+| `sd_vae/onboard/` | 上板包脚本与校验：`package_all.sh`、`run_on_board.sh`、`MANIFEST.txt`、`SHA256SUMS.txt`、`sd_vae_onboard_pkg.tar.gz.sha256`（tar 约 80 MB，解出约 108 MB） |
 | `_recon/work/sd_vae/SMOKE.md` | 模板/语言实测笔记：8 个模板确切写法、`docc` 两个 bug 的完整记录与绕法、`attention!` 头维上限实证 |
 | `_recon/work/sd_vae/ref/` | torch 黄金参考（sd-ref 产出）：`REFERENCE.md`、`dumps_index.json`、`layer_table.json`、`latent.bin`、`reference_image.{bin,npy,png}`（**仓库里：`sd_vae/evidence/ref_image.npy`（fp32 [1,3,512,512]，3,145,856 B，sha256 `b7cc6839…`）+ `latent.bin` + PNG**） |
 | `_recon/work/sd_vae/emu_out/` | 仿真结果：`emulated_image.{npy,png}`、`compare.json`、`stage_compare.json` |
@@ -164,14 +164,14 @@ python3 _recon/work/sd_vae/gen/emulate.py /root/sd_vae/build '/root/sd_vae/pack_
   _recon/work/sd_vae/ref/latent.bin _recon/work/sd_vae/ref/reference_image.bin /root/sd_vae/emu_out
 python3 _recon/work/sd_vae/gen/compare_stages.py /root/sd_vae/emu_out /root/sd_vae/ref
 # 5) 打上板包
-bash _recon/work/sd_vae/onboard/package_all.sh   # ⇒ /root/sd_vae/onboard_pkg (+ 工作区 tar.gz)
+bash sd_vae/onboard/package_all.sh   # ⇒ /root/sd_vae/onboard_pkg + /root/sd_vae/sd_vae_onboard_pkg.tar.gz
 ```
 
 ---
 
 ## 7. 真机验证（怎么操作）
 
-### 7.1 包内容（`sd_vae_onboard_pkg.tar.gz`，80 MB，解出 107 MB；tar sha256 = `eacb6a17ac3d5ea772f89d0a120ddfce84f7720a86cf91e0db543fd03f6378a8`）
+### 7.1 包内容（`sd_vae_onboard_pkg.tar.gz`，约 80 MB，解出约 108 MB；tar sha256 = `cbfe5f7dd597561b52bb2ea07cd6587e347e468d153cfd90c734aedd7d1d4cda`，也可直接看 `sd_vae/onboard/sd_vae_onboard_pkg.tar.gz.sha256`）
 ```
 cal_a/ cal_b1/ cal_b2a/ cal_b2b/ cal_c/   # docc calbin 目录（含 param_blk0.bin 与 pkg_*/ 下 CCU ELF）
 in_x.bin        # stage a 的输入：latent ⇒ border bf16 [68][68][16] + 补零到 decl 163,840 B（sha256 cf3eaee6…）
@@ -186,7 +186,7 @@ MANIFEST.txt SHA256SUMS.txt
 
 ### 7.2 上板步骤
 ```bash
-tar xzf sd_vae_onboard_pkg.tar.gz && cd onboard_pkg
+mkdir -p onboard_pkg && tar xzf sd_vae_onboard_pkg.tar.gz -C onboard_pkg && cd onboard_pkg
 # 板子健康（AGENTS.md 流程）：OS up / RT up
 dort device -i 0 | grep "Dev  :"
 # 一条龙（脚本逐段串起来；每段 rc≠0 会停）
