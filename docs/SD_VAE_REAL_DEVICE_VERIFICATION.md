@@ -46,7 +46,7 @@ sha256sum -c SHA256SUMS.txt          # 期望全部 OK
 | --- | --- | --- |
 | `in_x.bin` | 163,840 | `cf3eaee6bdb2c5cb05d6dc45d47a2467d172865dae591140e3360ee1b3784ea8` |
 | `latent.bin` | 65,536 | `79ed341043fe4be1f398e53a3af03d190d0a189fbc23034570acba4e8330a031` |
-| `ref_image.npy` | 3,145,856 | `b7cc6839afa2b5a6d0d16b73bc061216d5cc4fcab032e39f3a3f7e8442bce126` |
+| `ref_image.npy` | 3,145,856 | `b7cc6839afa2b5a6d0d16b73bc061216d5cc4fcab032e39f3a3f7e8442bce126`（= 仓库 `sd_vae/evidence/ref_image.npy`，同一文件） |
 | `run_on_board.sh` | 1,789 | `c1d51225c8cbee87e2553423fd4ee3433dee73c89489ea4fc62236939e2c2b56` |
 | `host.py` | 5,362 | `0afe3eca2ab3b65aff1c8c3b731c77be0bd2bc577f73dcda91fd35005c725a54` |
 

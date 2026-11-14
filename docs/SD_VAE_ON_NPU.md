@@ -36,7 +36,7 @@
 | `SD_VAE_REAL_DEVICE_VERIFICATION.md` | **真机验证手册**（逐条命令、字节数表、判据、排错表、记录模板） |
 | `_recon/work/sd_vae/onboard/` | 上板包：`package_all.sh`、`run_on_board.sh`、`MANIFEST.txt`、`SHA256SUMS.txt`、`sd_vae_onboard_pkg.tar.gz`（80 MB） |
 | `_recon/work/sd_vae/SMOKE.md` | 模板/语言实测笔记：8 个模板确切写法、`docc` 两个 bug 的完整记录与绕法、`attention!` 头维上限实证 |
-| `_recon/work/sd_vae/ref/` | torch 黄金参考（sd-ref 产出）：`REFERENCE.md`、`dumps_index.json`、`layer_table.json`、`latent.bin`、`reference_image.{bin,npy,png}` |
+| `_recon/work/sd_vae/ref/` | torch 黄金参考（sd-ref 产出）：`REFERENCE.md`、`dumps_index.json`、`layer_table.json`、`latent.bin`、`reference_image.{bin,npy,png}`（**仓库里：`sd_vae/evidence/ref_image.npy`（fp32 [1,3,512,512]，3,145,856 B，sha256 `b7cc6839…`）+ `latent.bin` + PNG**） |
 | `_recon/work/sd_vae/emu_out/` | 仿真结果：`emulated_image.{npy,png}`、`compare.json`、`stage_compare.json` |
 
 生成的 `.cvx` 与 calbin 不入库（可由源码 + 生成器一键重建，见 §9）；上板包在本地，需要时拷到板上。
@@ -118,6 +118,7 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 ### 5.2 本地黄金仿真 vs diffusers fp32 参考
 
 参考侧（sd-ref）：torch 2.15.0+cpu、diffusers 0.43.0，权重 fp32（sha256 `a2b5134f…`），latent = `default_rng(1234).standard_normal((1,4,64,64))/0.18215`（sha256 `79ed3410…`），确定性两次 decode 逐 bit 相同。
+比对用的参考张量就是仓库里的 **`sd_vae/evidence/ref_image.npy`**（`[1,3,512,512]` f32，3,145,856 B；npy 文件 sha256 `b7cc6839afa2b5a6d0d16b73bc061216d5cc4fcab032e39f3a3f7e8442bce126`，其 data 段原始字节 sha256 `5dcfd42c0a36f4727ddaff2ef14c5b01c4cbcf6e36ed852acb9648858e03475b`，与 `REFERENCE.md` 记录的 `reference_image.bin` 一致；`reference_image.png` 只是预览）。板卡回传 `out_c.bin` 后用 `host.py compare image.npy ref_image.npy` 即可得到 PSNR。
 
 | 边界 | module | 与参考 PSNR | max\|Δ\| | 参考范围 |
 | --- | --- | --- | --- | --- |
