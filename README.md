@@ -58,8 +58,8 @@ BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队
 
 | 名称 | 功能 | 状态 |
 | --- | --- | --- |
-| `resize_bilinear2` | **双线性上采样 ×2**（NHWC bf16，`align_corners=False`，边缘 clamp；f32 中间计算 + RNE 舍 bf16）；`[H][W][C] → [2H][2W][C]` | ✅ 编译 / docc calbin / doctor / 确定性 / 反汇编 / CPU 参考全过；✅ 已注册进 calDNN 图与引擎表（主机侧编排通过，未发射）；✅ **真机逐位相同**（见 §0 ※） |
-| `resize_bilinear2_tiled` | 同上，**通道分块版**：按 `CC` 把 C 切块，支持大 C（实测 C=256；原版上限 C≤128） | ✅ 同上（C=256 全链路通过）；✅ 真机逐位相同（见 §0 ※） |
+| `resize_bilinear2` | **双线性上采样 ×2**（NHWC bf16，`align_corners=False`，边缘 clamp；f32 中间计算 + RNE 舍 bf16）；`[H][W][C] → [2H][2W][C]` | ✅ 编译 / docc calbin / doctor / 确定性 / 反汇编 / CPU 参考全过；✅ 已注册进 calDNN 图与引擎表（主机侧编排通过，未发射）；✅ **真机逐位相同**（见 §0） |
+| `resize_bilinear2_tiled` | 同上，**通道分块版**：按 `CC` 把 C 切块，支持大 C（实测 C=256；原版上限 C≤128） | ✅ 同上（C=256 全链路通过）；✅ 真机逐位相同（见 §0） |
 | `resize_bilinear2_tiled2` | 分块版的**双核版**：两核各算一半通道块，数值与分块版逐位相同；配套 `resize_probe_big2` / `resize_probe_huge{,2}` 三个程序做单核 vs 双核同形状计时 | ✅ 编译 / docc / doctor 拒收 0；✅ CPU 分配检查；✅ **真机与单核逐字节相同**；墙钟比 huge 1.10 / big 1.04（含固定开销，非 kernel 净时间），见 [`docs/RESIZE_DUALCORE.md`](docs/RESIZE_DUALCORE.md) |
 | `conv2d_s2_fast`（实验） | **3×3、stride=2 卷积 + bias + SiLU** 的 FAST 路原型：偶/奇像素各一份 VB cache，让 tap 的 lhs 都成为连续 16 行；用于补齐 `conv2d!` 只对 `S==1` 开 FAST 的缺口 | ✅ 编译 / docc calbin / doctor / 反汇编；❌ 数值与性能待板；**未合入共享 `conv2d!`**（不影响现有模型），配同形状慢路对照 [`examples/conv2d_s2_ref`](examples/conv2d_s2_ref) |
 
@@ -89,7 +89,7 @@ BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队
 | c | 256²×512 → 512×512 图（up_blocks.2/3 + norm + conv_out） | 270,253 | 12,292,096 | 1,528,008 / 1,525,764 | 拒收 0 |
 | 合计 | — | **761,248** | **100,679,680** | **4,341,260 / 4,331,440** | — |
 
-**本地数值**：用 torch 按 `step.rs` 的算子顺序与我们的布局**仿真同一份程序**，与 diffusers fp32 黄金参考（确定性 decode）比较：最终图 **PSNR 52.83 dB**、max\|Δ\| 0.0473、mean\|Δ\| 0.00336；四个中间段边界 26.3–43.9 dB（张量数值范围 ±233，bf16 存储误差）。**真机：PSNR 52.58 dB / max\|Δ\| 0.0536，通过判据**（见 §0 ※）。2026-11-14 晚审查发现并修复生成器两处错误（单核调用两核分块模板、NCHW 暂存 0 字节），上表为修复后重新编译打包的数字，详见 [`docs/REVIEW_SD_VAE_2026-11-14.md`](docs/REVIEW_SD_VAE_2026-11-14.md)。
+**本地数值**：用 torch 按 `step.rs` 的算子顺序与我们的布局**仿真同一份程序**，与 diffusers fp32 黄金参考（确定性 decode）比较：最终图 **PSNR 52.83 dB**、max\|Δ\| 0.0473、mean\|Δ\| 0.00336；四个中间段边界 26.3–43.9 dB（张量数值范围 ±233，bf16 存储误差）。**真机：PSNR 52.58 dB / max\|Δ\| 0.0536，通过判据**（见 §0）。2026-11-14 晚审查发现并修复生成器两处错误（单核调用两核分块模板、NCHW 暂存 0 字节），上表为修复后重新编译打包的数字，详见 [`docs/REVIEW_SD_VAE_2026-11-14.md`](docs/REVIEW_SD_VAE_2026-11-14.md)。
 
 两个工程发现（写进文档）：
 1. **docc 0.4.1 的 riscvc 21 位分支限制**：内核对 `for part in 0..NH` 的常量上界会被整段展开，`group_norm` 在 128²×512 时单函数 `.text ≈ 1.12 MB` > ±1,048,575 B ⇒ 链接失败（实测 hw=4096/8192/12288/16384 → .text 282K/560K/831K/1,116K）。把 NH 做成普通标量实参无效（内联+常量传播），只能从 SRAM 读；我们改为自写 `gn_stats`/`gn_apply` 两个 kernel（运行期循环上界），同时把 GN 参数从 313 MB 缩到 96 MB。
