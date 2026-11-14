@@ -1082,8 +1082,11 @@ python ref.py yolo26n.pt <图片> <目录> out_y.bin io.map      # 对 torch、�
 | calculet 工具链 | **rustc 1.98.1 (48a229cea 2026-09-01)**、cargo 1.98.1、**docc 0.4.1**、**dort 0.4.1** |
 | 仓库 | WSL 内 `/root/{calBLAS,calDNN,npu}`，commit 与 §3.2 一致 |
 | 工具链位置 | `/root/.rustup/toolchains/nightly-2026-11-13-x86_64-unknown-linux-gnu/bin/`；`docc`/`dort` 链到 `/root/.cargo/bin` |
+| 发行版磁盘位置 | `C:\Users\10463\AppData\Local\WSL\Ubuntu`（`ext4.vhdx`，WSL2 导入式发行版）；2026-11-14 已从工作区 `_recon/wsl/UbuntuRoot` 迁出 |
 
 修复路径（可复现，脚本与日志在 `_recon/wsl/`）：启用 WSL 功能（DISM 3010）→ 重启 → `winget` 安装 **`Microsoft.WSL 3.0.5`**（Store 的 2.7.10 只是启动器壳，MSI 才是完整 WSL）→ 导入官方 Ubuntu rootfs → `env_setup.sh` 装 rustup/工具链/仓库并编译。
+
+迁移记录（2026-11-14，发行版实例不再放在工作区）：`wsl --shutdown` → `wsl --export Ubuntu <备份.tar>` → `wsl --unregister Ubuntu` → `wsl --import Ubuntu C:\Users\10463\AppData\Local\WSL\Ubuntu <备份.tar> --version 2` → `wsl --set-default Ubuntu`。迁移后实测：`rustc +calculet 1.98.1` / `docc 0.4.1` / `dort 0.4.1` 正常，`/root/{calBLAS,calDNN,npu}` 与已编译产物完整；`tiny`（elf + cvx）、`resize_probe`、`conv2d_s2_probe` 重新编译全部 exit 0，产物尺寸与迁移前一致（`resize_probe.cvx 35,160 B`、`conv2d_s2_probe.cvx 14,496 B`）。工作区 `_recon/wsl/` 仅保留安装脚本、日志与 rootfs 等证据资产（约 120 MB），不再有 2 GB+ 的 `ext4.vhdx`。
 
 ### 16.2 tiny 编译（第四阶段最终答案）
 
