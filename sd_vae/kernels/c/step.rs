@@ -6,7 +6,7 @@ npu::decls! {
     in_x: input, bytes = 69222400;
     out_y: output, bytes = 8536064;
     w: weights, bytes = 12292096;
-    act: workspace, bytes = 650330112;
+    act: workspace, bytes = 784547840;
 }
 
 #[npu::program(chiplets = 1, cores = 2)]
@@ -27,139 +27,139 @@ pub fn step() {
     sync_cores();
     k_conv_256_512to256_k1_p512_256(in_x().cast(), w().at(0).cast(), w().at(262144).cast(), act().at(65536).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_256_512_p512(in_x().cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_256_512_p512(in_x().cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_65536_512_32(act().at(650330112).cast(), act().at(0).cast(), 256);
     sync_cores();
     k_gna_65536_512_silu(act().at(650330112).cast(), w().at(266240).cast(), w().at(299008).cast(), act().at(0).cast(), act().at(650330112).cast(), 256);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_256_512_p512(act().at(650330112).cast(), act().at(103923712).cast()); }
+    k_nchw2nhwc_256_512_p512(act().at(650330112).cast(), act().at(103923712).cast());
     sync_cores();
     k_conv_256_512to256_k3_p512_256(act().at(103923712).cast(), w().at(331776).cast(), w().at(2691072).cast(), act().at(34684928).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_256_256_p256(act().at(34684928).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_256_256_p256(act().at(34684928).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_65536_256_32(act().at(650330112).cast(), act().at(0).cast(), 256);
     sync_cores();
     k_gna_65536_256_silu(act().at(650330112).cast(), w().at(2695168).cast(), w().at(2711552).cast(), act().at(0).cast(), act().at(650330112).cast(), 256);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(34684928).cast()); }
+    k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(34684928).cast());
     sync_cores();
     k_conv_256_256to256_k3_p256_256_r(act().at(34684928).cast(), w().at(2727936).cast(), w().at(3907584).cast(), act().at(65536).cast(), act().at(69304320).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_256_256_p256(act().at(69304320).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_256_256_p256(act().at(69304320).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_65536_256_32(act().at(650330112).cast(), act().at(0).cast(), 256);
     sync_cores();
     k_gna_65536_256_silu(act().at(650330112).cast(), w().at(3911680).cast(), w().at(3928064).cast(), act().at(0).cast(), act().at(650330112).cast(), 256);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast()); }
+    k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast());
     sync_cores();
     k_conv_256_256to256_k3_p256_256(act().at(65536).cast(), w().at(3944448).cast(), w().at(5124096).cast(), act().at(34684928).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_256_256_p256(act().at(34684928).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_256_256_p256(act().at(34684928).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_65536_256_32(act().at(650330112).cast(), act().at(0).cast(), 256);
     sync_cores();
     k_gna_65536_256_silu(act().at(650330112).cast(), w().at(5128192).cast(), w().at(5144576).cast(), act().at(0).cast(), act().at(650330112).cast(), 256);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast()); }
+    k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast());
     sync_cores();
     k_conv_256_256to256_k3_p256_256_r(act().at(65536).cast(), w().at(5160960).cast(), w().at(6340608).cast(), act().at(69304320).cast(), act().at(34684928).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_256_256_p256(act().at(34684928).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_256_256_p256(act().at(34684928).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_65536_256_32(act().at(650330112).cast(), act().at(0).cast(), 256);
     sync_cores();
     k_gna_65536_256_silu(act().at(650330112).cast(), w().at(6344704).cast(), w().at(6361088).cast(), act().at(0).cast(), act().at(650330112).cast(), 256);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast()); }
+    k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast());
     sync_cores();
     k_conv_256_256to256_k3_p256_256(act().at(65536).cast(), w().at(6377472).cast(), w().at(7557120).cast(), act().at(69304320).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_256_256_p256(act().at(69304320).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_256_256_p256(act().at(69304320).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_65536_256_32(act().at(650330112).cast(), act().at(0).cast(), 256);
     sync_cores();
     k_gna_65536_256_silu(act().at(650330112).cast(), w().at(7561216).cast(), w().at(7577600).cast(), act().at(0).cast(), act().at(650330112).cast(), 256);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast()); }
+    k_nchw2nhwc_256_256_p256(act().at(650330112).cast(), act().at(65536).cast());
     sync_cores();
     k_conv_256_256to256_k3_p256_256_r(act().at(65536).cast(), w().at(7593984).cast(), w().at(8773632).cast(), act().at(34684928).cast(), act().at(69304320).cast());
     sync_cores();
-    if core_rank() == 0 { k_up_256_256_p256_256(act().at(69304320).add(0).cast(), act().at(377667584).add(0).cast()); }
+    k_up_256_256_p256_256(act().at(69304320).add(0).cast(), act().at(377667584).add(0).cast());
     sync_cores();
     k_conv_512_256to256_k3_p256_256(act().at(377667584).cast(), w().at(8777728).cast(), w().at(9957376).cast(), act().at(513998848).cast());
     sync_cores();
     k_conv_512_256to128_k1_p256_128(act().at(513998848).cast(), w().at(9961472).cast(), w().at(10027008).cast(), act().at(173146112).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_256_p256(act().at(513998848).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_256_p256(act().at(513998848).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_256_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_256_silu(act().at(650330112).cast(), w().at(10031104).cast(), w().at(10047488).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_256_p256(act().at(650330112).cast(), act().at(377667584).cast()); }
+    k_nchw2nhwc_512_256_p256(act().at(650330112).cast(), act().at(377667584).cast());
     sync_cores();
     k_conv_512_256to128_k3_p256_128(act().at(377667584).cast(), w().at(10063872).cast(), w().at(10653696).cast(), act().at(241319936).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_128_p128(act().at(241319936).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_128_p128(act().at(241319936).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_128_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_128_silu(act().at(650330112).cast(), w().at(10657792).cast(), w().at(10665984).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(241319936).cast()); }
+    k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(241319936).cast());
     sync_cores();
     k_conv_512_128to128_k3_p128_128_r(act().at(241319936).cast(), w().at(10674176).cast(), w().at(10969088).cast(), act().at(173146112).cast(), act().at(309493760).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_128_p128(act().at(309493760).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_128_p128(act().at(309493760).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_128_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_128_silu(act().at(650330112).cast(), w().at(10973184).cast(), w().at(10981376).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast()); }
+    k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast());
     sync_cores();
     k_conv_512_128to128_k3_p128_128(act().at(173146112).cast(), w().at(10989568).cast(), w().at(11284480).cast(), act().at(241319936).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_128_p128(act().at(241319936).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_128_p128(act().at(241319936).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_128_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_128_silu(act().at(650330112).cast(), w().at(11288576).cast(), w().at(11296768).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast()); }
+    k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast());
     sync_cores();
     k_conv_512_128to128_k3_p128_128_r(act().at(173146112).cast(), w().at(11304960).cast(), w().at(11599872).cast(), act().at(309493760).cast(), act().at(241319936).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_128_p128(act().at(241319936).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_128_p128(act().at(241319936).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_128_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_128_silu(act().at(650330112).cast(), w().at(11603968).cast(), w().at(11612160).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast()); }
+    k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast());
     sync_cores();
     k_conv_512_128to128_k3_p128_128(act().at(173146112).cast(), w().at(11620352).cast(), w().at(11915264).cast(), act().at(309493760).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_128_p128(act().at(309493760).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_128_p128(act().at(309493760).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_128_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_128_silu(act().at(650330112).cast(), w().at(11919360).cast(), w().at(11927552).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast()); }
+    k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast());
     sync_cores();
     k_conv_512_128to128_k3_p128_128_r(act().at(173146112).cast(), w().at(11935744).cast(), w().at(12230656).cast(), act().at(241319936).cast(), act().at(309493760).cast());
     sync_cores();
-    if core_rank() == 0 { k_nhwc2nchw_512_128_p128(act().at(309493760).cast(), act().at(650330112).cast()); }
+    k_nhwc2nchw_512_128_p128(act().at(309493760).cast(), act().at(650330112).cast());
     sync_cores();
     k_gns_262144_128_32(act().at(650330112).cast(), act().at(0).cast(), 1024);
     sync_cores();
     k_gna_262144_128_silu(act().at(650330112).cast(), w().at(12234752).cast(), w().at(12242944).cast(), act().at(0).cast(), act().at(650330112).cast(), 1024);
     sync_cores();
-    if core_rank() == 0 { k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast()); }
+    k_nchw2nhwc_512_128_p128(act().at(650330112).cast(), act().at(173146112).cast());
     sync_cores();
     k_conv_512_128to16_k3_p128_16(act().at(173146112).cast(), w().at(12251136).cast(), w().at(12288000).cast(), out_y().cast());
     sync_cores();

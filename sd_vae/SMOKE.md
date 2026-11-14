@@ -152,7 +152,7 @@ calblas::nchw_to_nhwc!(pub 名字: h = 64, w = 64, c = 512, p = 512);   // 反�
 - 约束（模板 const assert）：`C % 32 == 0`、`P % 32 == 0`、`C ≤ P`、`(H·W) % 32 == 0`、`W % 32 == 0 || 32 % W == 0`。
 - **只写/只读内部**：NHWC 一侧的边框不会被写 ⇒ 目标 NHWC 缓冲**先 `fill16k!` 清零**；源 NHWC 的边框不读。
 - NCHW 一侧是 `[C][H·W]` 紧排（无 P 行距）。
-- kernel 没有 `cores` 属性（默认 1）：包在 `if core_rank() == 0` 里调用（内部 `halves!` 按该 kernel 的核数分块；这是推断，未数值验证 —— 见 §6 的未验证项）。
+- ~~kernel 没有 `cores` 属性（默认 1）：包在 `if core_rank() == 0` 里调用~~ **2026-11-14 审查实测推翻**：docc 把无 `cores` 属性 kernel 里的 `num_cores()` 折成程序核数 2（探针 ELF 与手写两核版逐字节相同），只由 0 号核调用会漏掉一半块；应两核都调用（官方 yolo26 程序即如此）。见 `docs/REVIEW_SD_VAE_2026-11-14.md` §3。
 
 本冒烟写法：
 

@@ -2,7 +2,7 @@
 
 **日期**：2026-11-14
 **目标**：把 SD1.5 的 VAE decoder（latent `[4,64,64]` → 512×512 RGB 图像）完整放到 Calculet NPU 上跑，作为赛题路线 B（端到端模型移植）的第一步。
-**当前状态**：✅ 平台侧全部打通（设备遍编译 / docc calbin / doctor 拒收 0 / 本地黄金仿真与 diffusers fp32 参考 PSNR ≈ 52.8 dB）；⏳ 真机数值等待板卡登录（队友在办）。
+**当前状态**：✅ 平台侧全部打通（2026-11-14 晚按审查修复两处生成器错误后重新通过，见 §5.1 注）（设备遍编译 / docc calbin / doctor 拒收 0 / 本地黄金仿真与 diffusers fp32 参考 PSNR ≈ 52.8 dB）；⏳ 真机数值等待板卡登录（队友在办）。
 
 ---
 
@@ -51,11 +51,11 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 
 | 段 | 输入 | 包含层 | 输出 | 参数 | @act |
 | --- | --- | --- | --- | --- | --- |
-| **a** | latent `[4,64,64]`（border bf16 `[68][68][16]`，147,968 B） | conv_in（4→512，k3，post_quant 已折入）、mid resnet0、**单头注意力**、mid resnet1 | `[68][68][512]` bf16（4,734,976 B） | 21.48 MB | 33.6 MiB |
-| **b1** | 64²×512 border | up_blocks.0 的 3 个 resnet + nearest×2 + conv（→128²） | `[132][132][512]`（17,842,176 B） | 33.45 MB | 30.6 MiB |
-| **b2a** | 128²×512 border | up_blocks.1 的 3 个 resnet | `[132][132][512]` | 28.73 MB | 51.1 MiB |
+| **a** | latent `[4,64,64]`（border bf16 `[68][68][16]`，147,968 B） | conv_in（4→512，k3，post_quant 已折入）、mid resnet0、**单头注意力**、mid resnet1 | `[68][68][512]` bf16（4,734,976 B） | 21.48 MB | 37.6 MiB |
+| **b1** | 64²×512 border | up_blocks.0 的 3 个 resnet + nearest×2 + conv（→128²） | `[132][132][512]`（17,842,176 B） | 33.45 MB | 34.6 MiB |
+| **b2a** | 128²×512 border | up_blocks.1 的 3 个 resnet | `[132][132][512]` | 28.73 MB | 67.1 MiB |
 | **b2b** | 128²×512 border | nearest×2 + conv 512→512（→256²） | `[260][260][512]`（69,222,400 B） | 4.72 MB | 66.0 MiB |
-| **c** | 256²×512 border | up_blocks.2（512→256，含 1×1 shortcut）、up_blocks.3（256→128）、conv_norm_out、conv_out（128→3，补到 16） | 图像 `[516][516][16]` bf16（8,536,064 B） | 12.29 MB | 650.3 MiB |
+| **c** | 256²×512 border | up_blocks.2（512→256，含 1×1 shortcut）、up_blocks.3（256→128）、conv_norm_out、conv_out（128→3，补到 16） | 图像 `[516][516][16]` bf16（8,536,064 B） | 12.29 MB | 748.2 MiB |
 
 > 为什么分 5 段而不是一整份：**docc 0.4.1 的 riscvc 链接器 21 位分支限制**。整份程序的单个 CCU `.text` 超过 1 MiB 时链接报 `distance … 超出 21 位`。分段后单段 ELF 0.03–1.53 MB，全部可链接。另外分段也天然便于逐段对数值、逐段上板定位。
 
@@ -66,7 +66,7 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 ### 4.1 数据布局
 - 特征图沿用 calBLAS 视觉模板的 **NHWC + 四周 2 像素边框**布局：`[H+4][W+4][P]`，`P` = 通道行距（我们取 = 实际通道数，都是 16 的倍数）。边框由程序开头一次性清零（`calblas::fill16k!`，运行期块数，不会展开）。
 - 卷积用 `calblas::conv2d!`（k=1/3、s=1、BN 已折入、bias f32、act=none；resnet 的第二个 conv 直接带 `res=` 做残差）。
-- GroupNorm 需要 NCHW：每个 norm 前 `nhwc_to_nchw!`，norm 后 `nchw_to_nhwc!`（模板自带，块处理，两核分）。NCHW 暂存在 `@act` 里做**共享 scratch**（顺序复用，最大 134 MiB）。
+- GroupNorm 需要 NCHW：每个 norm 前 `nhwc_to_nchw!`，norm 后 `nchw_to_nhwc!`（模板自带，块处理，两核分）。NCHW 暂存在 `@act` 里做**共享 scratch**（顺序复用，按最大 GroupNorm 输入分配，c 段 128 MiB = 134,217,728 B）。
 - 上采样：`calblas::upsample2!`（nearest ×2，border 布局）。模板 `c ≤ 256`，512 通道时**拆两次调用**（指针 +512 B、通道窗口 256）。
 - 注意力：q/k/v/o 紧排 `[4096, 512]` bf16；`border → tight` 用自写 `k_crop`、反向用 `k_pad`；K 用 `transpose2d!` 转成 `[512,4096]` 供 mma 右乘。
 
@@ -89,7 +89,7 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 - 打包器写完参数块后**从块里读回每个张量**与期望字节逐字节比对：138 个张量全一致（`bad=0`），参数块 sha256 见各段 `pack_report.json`。
 
 ### 4.4 程序约定
-- `#[npu::program(chiplets = 1, cores = 2)]`；每个 `cores = 2` kernel 调用后 `sync_cores()`；`cores = 1` 的（布局/搬运/上采样）包在 `if core_rank() == 0 {}` 里再同步。
+- `#[npu::program(chiplets = 1, cores = 2)]`；每个 `cores = 2` kernel 调用后 `sync_cores()`；`fill16k!` / `k_crop` / `k_pad` 这类不分块的单核 kernel 包在 `if core_rank() == 0 {}` 里再同步；`nhwc_to_nchw!` / `nchw_to_nhwc!` / `upsample2!` / `transpose2d!` 内部用 `halves!()` 按 `num_cores()` 分块（docc 把它折成程序的核数 2），**必须两核都调用**，与官方 yolo26 程序一致（2026-11-14 审查修正）。
 - 所有 `@act` 偏移、参数块偏移由生成器统一分配（4 KiB 对齐），程序与打包器共用同一份 `params.json`/`plan.json`。
 - **段间靠裸字节衔接**（`out_a.bin` 直接喂下一段 `in_x`），而 conv 只写内部区域 ⇒ 每段程序开头把 `out_y` 声明的边框也清零（`fill16k`），否则会把上一段内存残留当 padding 读进去。
 
@@ -99,18 +99,20 @@ SD1.5 VAE（diffusers `AutoencoderKL`，config：`block_out_channels=[128,256,51
 
 ### 5.1 平台侧（本机实测）
 
+> **2026-11-14 晚修复版**：审查（`docs/REVIEW_SD_VAE_2026-11-14.md`）发现生成器两处错误并已修复：① `nhwc_to_nchw!` / `nchw_to_nhwc!` / `upsample2!` / `transpose2d!` 内部按 `num_cores()` 分块，原来只由 0 号核调用会漏掉一半数据块，现改为两核都调用；② NCHW 暂存区大小算成 0 字节，现按最大 GroupNorm 输入分配（c 段 128 MiB）。修复后 5 段重新编译、`docc calbin from-calvx`、`doctor` 全部通过（拒收 0，各 2 条 ping/pong 警告），数字见下表；修复前的数字保留在 `sd_vae/STAGE_EVIDENCE.md` §1。本地黄金仿真不建模地址与核分工，修复前后输出相同；**真机仍未验证**。
+
 | 段 | `.cvx` B | `.cvxo` B | 参数块 B | @act B | ccu0 ELF B | ccu1 ELF B | doctor |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| a | 246,826 | 39,171 | 21,483,520 | 35,241,984 | 1,414,648 | 1,049,156 | 拒收 0 |
-| b1 | 161,321 | 25,841 | 33,452,032 | 32,112,640 | 968,536 | 714,864 | 拒收 0 |
-| b2a | 71,967 | 11,936 | 28,729,344 | 53,592,064 | 398,884 | 145,552 | 拒收 0 |
-| b2b | 23,085 | 3,984 | 4,722,688 | 69,222,400 | 31,160 | 29,820 | 拒收 0 |
-| c | 278,729 | 44,539 | 12,292,096 | 650,330,112 | 1,528,008 | 959,116 | 拒收 0 |
-| 合计 | **781,928** | **125,471** | **100,679,680** | — | **4,341,236** | **2,898,508** | — |
+| a | 243,366 | 38,610 | 21,483,520 | 39,436,288 | 1,414,672 | 1,411,672 | 拒收 0 |
+| b1 | 156,915 | 25,127 | 33,452,032 | 36,306,944 | 968,536 | 966,160 | 拒收 0 |
+| b2a | 68,253 | 11,324 | 28,729,344 | 70,369,280 | 398,884 | 397,144 | 拒收 0 |
+| b2b | 22,461 | 3,888 | 4,722,688 | 69,222,400 | 31,160 | 30,700 | 拒收 0 |
+| c | 270,253 | 43,162 | 12,292,096 | 784,547,840 | 1,528,008 | 1,525,764 | 拒收 0 |
+| 合计 | **761,248** | **122,111** | **100,679,680** | — | **4,341,260** | **4,331,440** | — |
 
 （doctor 的 2 条警告都是 `in_x`/`out_y` 的 ping/pong 同址；单次推理不触发，重复喂输入时需要加 `double_buffer`。）
 
-补充证据（完整表见 `_recon/work/sd_vae/STAGE_EVIDENCE.md`）：
+补充证据（以下三项在 **修复前** 的构建上测得，修复版未重跑；完整表见 `sd_vae/STAGE_EVIDENCE.md`）：
 - **确定性**：删 `target` 重编两次，5 段 `.cvx` sha256 全部逐字节相同；`docc calbin from-calvx` 跑两次，5 段两组 CCU ELF sha256 逐字节相同。
 - **反汇编**：5 段 × 2 核共 12 份 CCU ELF，`docc elf ccu disasm` 全部“走完了：每个字节都被一条认得出的指令覆盖”，**unknown 0 条**（合计 780,588 条 ccu0 / 496,845 条 ccu1）。
 - **装载量**：`docc elf ccu view` 的 `load_size` 与“各节字节和”自校验一致（a 1,408,896 / b1 963,140 / b2a 393,656 / b2b 26,120 / c 1,521,536 B，ccu0）。

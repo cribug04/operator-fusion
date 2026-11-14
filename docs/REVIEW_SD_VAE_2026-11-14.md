@@ -144,3 +144,6 @@ Resize 分支 jax/validation-fixes 自洽，与 master 合并无冲突（`git me
 | c | exit 0 | 270,253 | exit 0 | 拒收 0，警告 2 | 1,528,008 | 1,525,764（修前 959,116） |
 
 ccu1 的 ELF 变大，说明布局/上采样/转置 kernel 现在确实进入了 1 号核；两段都没有触发 riscvc 21 位分支链接错误。修改后的生成器副本：`gen_fixed.py`（与原文件相比只有 4 处差异，见 `gen_fixed.diff`）。b1 / b2a / b2b 只重新生成未编译。数值仿真未重跑（本机无 torch 与权重）；按仿真器的实现方式，这两处修改不会改变它的输出。
+
+
+**追加（同日晚）**：两处修法已应用到分支 `jax/review-sd-vae` 的 `sd_vae/gen/gen.py`，5 段源码重新生成，5/5 在 Linux 上编译、`docc calbin from-calvx`、`doctor` 通过（拒收 0，各 2 条 ping/pong 警告）。修复版数字见 `sd_vae/STAGE_EVIDENCE.md` §0。b1 / b2a / b2b 的 ccu1 ELF 分别为 966,160 / 397,144 / 30,700 B，`.cvx` 为 156,915 / 68,253 / 22,461 B。
