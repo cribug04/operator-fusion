@@ -247,3 +247,6 @@ _recon/work/resize/
 3. **W 分块**：`W*CC*56 B <= 384 KiB` 之外的宽度仍不支持；超大 W 需要横向分块（边界列单独处理）。
 4. 任意尺寸/倍率、NCHW、进 calDNN 图（Engine 注册）仍是后续项。
 
+## 11. 双核版 `resize_bilinear2_tiled2!`（2026-11-14 晚新增）
+
+两核各算一半通道块，数值与分块版逐位相同，配三个计时用程序；编译 / docc / doctor 已过，**真机未跑、无性能数据**。见 [RESIZE_DUALCORE.md](RESIZE_DUALCORE.md)。

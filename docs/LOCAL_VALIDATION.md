@@ -13,7 +13,7 @@
 
 ## 实际测试结果
 
-运行 `python3 -m unittest discover -s tests -v`：**40 项测试通过**（2026-11-14；最初 21 项，新增 19 项 Resize CPU 边界测试）。
+运行 `python3 -m unittest discover -s tests -v`：**43 项测试通过**（2026-11-14；最初 21 项，新增 19 项 Resize CPU 边界测试，晚间再加 3 项双核通道块分配测试 `tests/test_resize_dualcore_split.py`）。
 
 其中 14 项验证 bf16 CLI，7 项使用假的 dort 进程验证 Shell 控制流。后者只产生测试文件，**不模拟硬件计算，也不是 NPU 测试结果**。
 

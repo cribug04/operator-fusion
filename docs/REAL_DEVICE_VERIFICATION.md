@@ -344,6 +344,12 @@ python3 compare_bf16.py out_conv_ref.bin  cases/conv_s2/expected.bin \
 
 ---
 
+## 8b. Resize 单核 vs 双核计时（2026-11-14 晚新增，真机未跑）
+
+`package_all.sh` 现在多产出 `resize_big2`、`resize_huge`、`resize_huge2` 三个 calbin。先 `python3 gen_resize_huge_case.py` 生成 `cases/resize_huge/`，
+再在板卡主机 `DEVICE=0 N=5 bash run_resize_perf.sh`，脚本自动做 N 次一致性、单核/双核输出逐字节相同、与 CPU 期望 exact 对比，并把每次墙钟时间写到 `perf_out/timing.tsv`。
+时间包含 dort 进程/部署/IO 开销，只报同形状的比值。细节与报告规则见 [RESIZE_DUALCORE.md](RESIZE_DUALCORE.md)。
+
 ## 9. 排错表（按症状查）
 
 | 症状 | 可能原因 | 处理 |

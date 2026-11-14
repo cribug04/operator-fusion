@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 在 Linux 开发机（已装 calculet 工具链）上：编译 4 个 example + docc 打包 calbin + doctor。
+# 在 Linux 开发机（已装 calculet 工具链）上：编译 7 个 example + docc 打包 calbin + doctor。
 # 用法：
 #   CALBLAS=~/calBLAS CASE_DIR=./cases OUT=./onboard_cal bash package_all.sh
 # 前置：已应用代码补丁（calBLAS/examples/resize_probe{,_big}、conv2d_s2_probe、conv2d_s2_ref 存在）
@@ -44,11 +44,15 @@ build_and_pkg resize_probe     resize_probe     resize        empty
 build_and_pkg resize_probe_big resize_probe_big resize_big    empty
 build_and_pkg conv2d_s2_probe  conv2d_s2_probe  conv_s2       "$CASE_DIR/conv_s2/param_blk0.bin"
 build_and_pkg conv2d_s2_ref    conv2d_s2_ref    conv_s2_ref   "$CASE_DIR/conv_s2/param_blk0.bin"
+# Resize 双核版与大尺寸计时对（2026-11-14 晚新增；kernel 标 cores = 2，程序 cores = 2）
+build_and_pkg resize_probe_big2  resize_probe_big2  resize_big2  empty
+build_and_pkg resize_probe_huge  resize_probe_huge  resize_huge  empty
+build_and_pkg resize_probe_huge2 resize_probe_huge2 resize_huge2 empty
 
 echo
 echo "################ 打包完成 ################"
 echo "calbin 目录："
-for n in resize resize_big conv_s2 conv_s2_ref; do echo "  $OUT/$n"; done
+for n in resize resize_big conv_s2 conv_s2_ref resize_big2 resize_huge resize_huge2; do echo "  $OUT/$n"; done
 echo
 echo "真机上依次运行："
 cat <<EOF
@@ -58,6 +62,9 @@ dort calbin run -i 0 -f $OUT/resize      -m resize_pkg      --raw-in $CASE_DIR/r
 dort calbin run -i 0 -f $OUT/resize_big  -m resize_big_pkg  --raw-in $CASE_DIR/resize_big/input.bin   --raw-out out_resize_big.bin  --in-tensor in_x --out-tensor out_y
 dort calbin run -i 0 -f $OUT/conv_s2     -m conv_s2_pkg     --raw-in $CASE_DIR/conv_s2/input.bin     --raw-out out_conv_fast.bin   --in-tensor in_x --out-tensor out_y
 dort calbin run -i 0 -f $OUT/conv_s2_ref -m conv_s2_ref_pkg --raw-in $CASE_DIR/conv_s2/input.bin     --raw-out out_conv_ref.bin    --in-tensor in_x --out-tensor out_y
+
+# Resize 单核 vs 双核计时（先 python3 gen_resize_huge_case.py 生成 cases/resize_huge）：
+bash run_resize_perf.sh
 
 # 对比（在能跑 python3+numpy 的机器上）：
 python3 compare_bf16.py out_resize.bin     $CASE_DIR/resize_small/expected.bin --label resize
