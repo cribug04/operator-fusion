@@ -2,6 +2,8 @@
 
 BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队「你说的都队」（吴羿辰、吴文宇、赵宇涵、邓思涵）· 2026-11-13 14:00 开赛，本仓库首个提交为 `5fee97b`（11-13 22:55）。提交记录支持以下开发时间线，不能单独证明开赛前无已有代码。
 
+**仓库**：[GitHub](https://github.com/cribug04/operator-fusion)（主）· [Gitee](https://gitee.com/nssdd/operator-fusion)（镜像，同一 master）
+
 ## 0. 评委请先看这里
 
 | 成果 | 真机结果 | 平台侧 / 本地 | 入口 |
@@ -15,7 +17,7 @@ BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队
 
 **10 分钟内无板子能复现什么**：见 [JUDGE_GUIDE.md](docs/JUDGE_GUIDE.md)（calDNN 图演示、43 项测试、CPU 参考复核；有 calculet 工具链时 7 个程序的编译与 docc doctor）。
 
-**42 小时时间线**（Gitee 提交记录，北京时间）：
+**42 小时时间线**（Git 提交记录，北京时间）：
 
 | 时间 | 谁 | 事 |
 | --- | --- | --- |

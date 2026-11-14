@@ -6,7 +6,7 @@
 ## A. 只需 Python 3 + numpy（约 2 分钟）
 
 ```bash
-git clone https://gitee.com/nssdd/operator-fusion.git   # 默认分支 master
+git clone https://github.com/cribug04/operator-fusion.git   # 默认分支 master；Gitee 镜像同内容
 cd operator-fusion
 KIT=$(pwd)  # 后续 B/C 沿用同一终端
 python3 -m venv /tmp/operator-fusion-judge-venv
