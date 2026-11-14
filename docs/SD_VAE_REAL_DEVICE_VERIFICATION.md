@@ -2,7 +2,7 @@
 
 **对象**：SD1.5 VAE decoder（全 NPU，5 段 CalVX 程序）：输入 latent `[4,64,64]`，输出 512×512 RGB 图像。
 **目的**：在 Calculet NPU 板卡上把 5 段 calbin 依次跑完，得到图像，和 torch/diffusers fp32 黄金参考比对，判定移植是否成功。
-**现状**：平台侧已全通（5/5 设备遍编译、docc calbin、doctor 拒收 0、反汇编 0 unknown、构建逐字节确定）；本地黄金仿真与参考 **PSNR 52.83 dB / max|Δ| 0.0473**。真机数值是本手册要补的最后一步。
+**现状**：2026-11-14 晚按审查修复两处生成器错误（见 `docs/REVIEW_SD_VAE_2026-11-14.md`），上板包需用修复后的 5 段重新 docc 打包；平台侧已全通（5/5 设备遍编译、docc calbin、doctor 拒收 0、反汇编 0 unknown、构建逐字节确定）；本地黄金仿真与参考 **PSNR 52.83 dB / max|Δ| 0.0473**。真机数值是本手册要补的最后一步。
 
 ---
 
@@ -169,7 +169,7 @@ python3 host.py raw out_c.bin               # 字节数 + sha256
 | 图像大体对但边缘/角落异常 | 输入/输出边框没清零（旧版程序才会） | 用本包（程序会在开头清 `out_y` 边框）；不要自己拼中间文件 |
 | PSNR 30–40 dB | 硬件 `exp/rsqrt` 近似 + bf16 的累积误差 | 属正常范围下限；只要 ≥40 dB 即通过。若 <30 dB 按“花屏”逐段查 |
 | 重复跑第二张图结果异常 | 输出/输入 decl 未开 `double_buffer`（doctor 有 ping/pong 警告） | 一张图跑一次 `dort calbin run`（每次都会重新部署）；连续多张需重新生成带 `double_buffer` 的包 |
-| 段 5 很慢 / 内存告警 | 段 c 的 `@act` 620 MiB（最大），512² 特征图 | 属预期；看 `timing.txt`，只要没挂就让它跑完 |
+| 段 5 很慢 / 内存告警 | 段 c 的 `@act` 748 MiB（最大，含 128 MiB NCHW 暂存），512² 特征图 | 属预期；看 `timing.txt`，只要没挂就让它跑完 |
 
 ---
 

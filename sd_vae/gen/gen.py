@@ -262,7 +262,7 @@ def finish(P):
 
     max_nchw = 0
     for op in P.ops:
-        if op['kind'] == 'gn':
+        if op['kind'] == 'gn_stats':
             max_nchw = max(max_nchw, op['key'][2] * op['key'][1] * 2)
     for n in P.bufs:
         b = P.bufs[n]
@@ -797,13 +797,13 @@ def gen_step(P):
                      f'{off(P, op["s"])}.cast(), {off(P, op["y"])}.cast(), {op["nchunk"]});')
             L.append('    sync_cores();')
         elif kind == 'layout':
-            L.append(f'    if core_rank() == 0 {{ {layout_name(op["key"])}('
-                     f'{off(P, op["x"])}.cast(), {off(P, op["y"])}.cast()); }}')
+            L.append(f'    {layout_name(op["key"])}('
+                     f'{off(P, op["x"])}.cast(), {off(P, op["y"])}.cast());')
             L.append('    sync_cores();')
         elif kind == 'up':
-            L.append(f'    if core_rank() == 0 {{ {up_name(op["key"])}('
+            L.append(f'    {up_name(op["key"])}('
                      f'{off(P, op["x"])}.add({op["xoff"]}).cast(), '
-                     f'{off(P, op["y"])}.add({op["yoff"]}).cast()); }}')
+                     f'{off(P, op["y"])}.add({op["yoff"]}).cast());')
             L.append('    sync_cores();')
         elif kind in ('crop', 'pad'):
             name = f'k_{kind}_{op["key"][1]}_p{op["key"][2]}_{op["key"][3]}'
@@ -811,8 +811,8 @@ def gen_step(P):
                      f'{off(P, op["x"])}.cast(), {off(P, op["y"])}.cast()); }}')
             L.append('    sync_cores();')
         elif kind == 'transpose':
-            L.append(f'    if core_rank() == 0 {{ k_t2d_{op["key"][1]}_{op["key"][2]}('
-                     f'{off(P, op["x"])}.cast(), {off(P, op["y"])}.cast()); }}')
+            L.append(f'    k_t2d_{op["key"][1]}_{op["key"][2]}('
+                     f'{off(P, op["x"])}.cast(), {off(P, op["y"])}.cast());')
             L.append('    sync_cores();')
         elif kind == 'attn':
             L.append(f'    sd_vae_attn({off(P, op["q"])}.cast(), {off(P, op["kt"])}.cast(), '

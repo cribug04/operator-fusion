@@ -17,9 +17,9 @@ pub fn step() {
         k_fill0(out_y().cast(), 4225);
     }
     sync_cores();
-    if core_rank() == 0 { k_up_128_256_p512_512(in_x().add(0).cast(), act().at(0).add(0).cast()); }
+    k_up_128_256_p512_512(in_x().add(0).cast(), act().at(0).add(0).cast());
     sync_cores();
-    if core_rank() == 0 { k_up_128_256_p512_512(in_x().add(512).cast(), act().at(0).add(512).cast()); }
+    k_up_128_256_p512_512(in_x().add(512).cast(), act().at(0).add(512).cast());
     sync_cores();
     k_conv_256_512to512_k3_p512_512(act().at(0).cast(), w().at(0).cast(), w().at(4718592).cast(), out_y().cast());
     sync_cores();
