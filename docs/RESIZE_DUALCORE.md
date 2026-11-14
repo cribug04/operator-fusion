@@ -1,10 +1,12 @@
 # Resize 双核版 `resize_bilinear2_tiled2!`（2026-11-14 晚）
 
-**状态**：设备端编译 ✅ · docc calbin ✅ · doctor 拒收 0 ✅ · CPU 分块分配检查 ✅ · **真机未运行 ❌ · 没有任何性能数据 ❌**
+**状态**：设备端编译 ✅ · docc calbin ✅ · doctor 拒收 0 ✅ · CPU 分块分配检查 ✅ · **真机：与单核逐字节相同 ✅** · 墙钟比值 huge 1.10 / big 1.04（含固定开销）· **kernel 净加速比未测 ❌**
+
+真机结果见 §8；§1–§7 写于上板之前，保持原样。
 
 路线 A 之前交付的 Resize 是单核程序（`#[npu::program(cores = 1)]`）。这一版把通道分块版改成两核各算一半通道块，
 目的只有一个：在真机上和单核版**同形状、同输入**对比，得到一个有实测支撑的加速比。
-没跑过板之前，本文件里不出现任何加速数字。
+上板前本文件不出现加速数字；上板后的数字只在 §8，并带口径。
 
 ## 1. 做法
 
@@ -86,3 +88,28 @@ DEVICE=0 N=5 bash run_resize_perf.sh       # 结果在 perf_out/timing.tsv
 1. 只分通道块，不分行；`C/CC` 必须是偶数，`C ≤ 128` 的小通道数场景（如 32×32×16）仍只有单核版。
 2. 没有 kernel 内计时（`stamp()` 槽的读取方式未查到），拿不到净 kernel 时间。
 3. 单核 `huge` 基线的 ccu0 ELF（13 KB）比 `big`（86 KB）小，说明 docc 对 NC=8 的外层循环没有完全展开；两版 huge 的代码形态一致，比较仍然公平，但与 `big` 之间不可横向比。
+
+## 8. 真机结果（2026-11-14 晚，队友上板；报告 [`evidence/resize_dualcore_board_report.md`](../evidence/resize_dualcore_board_report.md)，原始件 [`evidence/board_2026-11-14/resize_dualcore/`](../evidence/board_2026-11-14/resize_dualcore/)）
+
+环境：calculet-MS-A2，2 芯粒，Driver 0.9.3 / DRT 74832e51，dort 0.4.1；程序来源 `jax/resize-dualcore` @ `2ddef94`，板机重编的四个 `.cvx` 哈希与 §3 全部一致；`--board-lock external`，CalRT 流带未开启。
+
+**数值（`--mode exact`）**
+
+| 用例 | 元素 | 结果 | 输出 sha256 前 16 |
+| --- | --- | --- | --- |
+| resize_big（单核） / resize_big2（双核） | 1,048,576 | 都与 CPU 期望逐位相同；`cmp` single == dual | `6fb683176318acd3`（与第一次上板的单核输出同哈希） |
+| resize_huge（单核） / resize_huge2（双核） | 16,777,216 | 同上 | `5c1d4c42450b96ce`（= §4 里 `expected.bin` 的哈希，说明板机现场生成的用例与本机逐字节一致） |
+
+**墙钟（`dort calbin run` 整条命令，N=5，`timing.tsv`）**
+
+| 用例 | 中位数 | 比值（单核/双核） |
+| --- | --- | --- |
+| resize_big / big2 | 0.006 s / 0.006 s | 1.04 |
+| resize_huge / huge2 | 0.052 s / 0.047 s | 1.10 |
+
+**怎么解读**
+
+- 功能结论成立：双核版可以直接替换单核分块版，输出逐字节相同。
+- 性能结论**不成立**：1.10 倍是含进程启动、部署、40 MiB 输入输出搬运的墙钟比，5 次样本的离散度（huge 0.048–0.053 s）和差值同量级。海报、PPT、README 一律写"真机逐位正确；墙钟比 1.10，含固定开销，不构成性能结论"。
+- 报告里"两点模型估 kernel 约 10 ms → 5 ms、固定开销约 42 ms"是推算，而且与 `big` 整条命令只有 6 ms 自相矛盾（固定开销不可能大于总时间），**不要引用**。要净时间只能给 kernel 加 `stamp()` 插桩，或把形状放大到 kernel 时间明显盖过开销。
+

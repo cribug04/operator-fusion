@@ -75,8 +75,8 @@ RUSTUP_TOOLCHAIN=calculet CALBLAS="$REPRO/calBLAS" bash package_all.sh      # 7 
 | --- | --- | --- |
 | resize_probe | `536b406a6ec2512b` | 已上板，32×32×16 |
 | resize_probe_big | `5a22650a3f29335a` | 已上板，32×32×256 分块 |
-| resize_probe_big2 | `e13fba7920c6efd2` | 双核版，未上板 |
-| resize_probe_huge / huge2 | `fc7f8dc099101e0d` / `172a4ee9bf89a02d` | 计时对，未上板 |
+| resize_probe_big2 | `e13fba7920c6efd2` | 双核版，已上板：与单核输出逐字节相同（[evidence/resize_dualcore_board_report.md](../evidence/resize_dualcore_board_report.md)） |
+| resize_probe_huge / huge2 | `fc7f8dc099101e0d` / `172a4ee9bf89a02d` | 计时对，已上板：逐字节相同，墙钟比 1.10（含固定开销） |
 
 两次构建逐字节相同（`evidence/*/sha256*.txt`）。
 

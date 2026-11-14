@@ -8,12 +8,12 @@ BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队
 
 | 成果 | 真机结果 | 平台侧 / 本地 | 入口 |
 | --- | --- | --- | --- |
-| **路线 A · Bilinear Resize ×2 算子**（NHWC bf16，普通版 C≤128 + 通道分块版 C=256） | ✅ 两个尺寸输出与 CPU 参考**逐位相同**，1,114,112 个元素 0 差异，三次重跑同哈希 ※ | 设备端编译 → CalVX → docc calbin → doctor 拒收 0；43 项 CPU 测试（13 种尺寸三路独立算法逐位一致）；已注册进 calDNN 图与引擎表，Plan / bind 通过 | [RESIZE_OPERATOR.md](docs/RESIZE_OPERATOR.md) · [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md) · [CALDNN_INTEGRATION.md](docs/CALDNN_INTEGRATION.md) |
-| **路线 B · SD1.5 VAE 解码器全 NPU 移植**（latent [4,64,64] → 512×512，5 段 CalVX 程序，35 conv + 30 GN + 1 注意力） | ✅ 5/5 段跑通出图；与 diffusers fp32 参考 **PSNR 52.58 dB / max\|Δ\| 0.0536**（判据 ≥40 dB / ≤0.08，通过）；整链 34.6 s（含部署开销，板端流带未开启，非正式性能数据）※ | 5 段编译 / docc 拒收 0 / 构建逐字节确定；本地黄金仿真 52.83 dB；审查发现并修复生成器两处错误后上板 | [SD_VAE_ON_NPU.md](docs/SD_VAE_ON_NPU.md) · [SD_VAE_REAL_DEVICE_VERIFICATION.md](docs/SD_VAE_REAL_DEVICE_VERIFICATION.md) · [REVIEW_SD_VAE_2026-11-14.md](docs/REVIEW_SD_VAE_2026-11-14.md) |
-| Resize **双核版** + 单核/双核同形状计时程序 | ❌ 未上板，无性能数据 | 编译 / docc / doctor 拒收 0；CPU 分配检查通过 | [RESIZE_DUALCORE.md](docs/RESIZE_DUALCORE.md) |
+| **路线 A · Bilinear Resize ×2 算子**（NHWC bf16，普通版 C≤128 + 通道分块版 C=256） | ✅ 两个尺寸输出与 CPU 参考**逐位相同**，1,114,112 个元素 0 差异，三次重跑同哈希，两次上板（换分支重编）同一输出哈希 · [evidence/INDEX.md](evidence/INDEX.md) | 设备端编译 → CalVX → docc calbin → doctor 拒收 0；43 项 CPU 测试（13 种尺寸三路独立算法逐位一致）；已注册进 calDNN 图与引擎表，Plan / bind 通过 | [RESIZE_OPERATOR.md](docs/RESIZE_OPERATOR.md) · [LOCAL_VALIDATION.md](docs/LOCAL_VALIDATION.md) · [CALDNN_INTEGRATION.md](docs/CALDNN_INTEGRATION.md) |
+| **路线 B · SD1.5 VAE 解码器全 NPU 移植**（latent [4,64,64] → 512×512，5 段 CalVX 程序，35 conv + 30 GN + 1 注意力） | ✅ 5/5 段跑通出图；与 diffusers fp32 参考 **PSNR 52.58 dB / max\|Δ\| 0.0536**（判据 ≥40 dB / ≤0.08，通过）；整链 34.6 s（含部署开销，板端流带未开启，非正式性能数据）· [evidence/vae_stage_report.md](evidence/vae_stage_report.md) · 原始件 [evidence/board_2026-11-14/vae/](evidence/board_2026-11-14/vae/) | 5 段编译 / docc 拒收 0 / 构建逐字节确定；本地黄金仿真 52.83 dB；审查发现并修复生成器两处错误后上板 | [SD_VAE_ON_NPU.md](docs/SD_VAE_ON_NPU.md) · [SD_VAE_REAL_DEVICE_VERIFICATION.md](docs/SD_VAE_REAL_DEVICE_VERIFICATION.md) · [REVIEW_SD_VAE_2026-11-14.md](docs/REVIEW_SD_VAE_2026-11-14.md) |
+| Resize **双核版** + 单核/双核同形状计时程序 | ✅ 双核输出与单核**逐字节相同**（1,048,576 与 16,777,216 元素，均与 CPU 期望 exact）；墙钟中位数比 huge 1.10、big 1.04，**含 dort 固定开销，不构成性能结论** · [evidence/resize_dualcore_board_report.md](evidence/resize_dualcore_board_report.md) | 编译 / docc / doctor 拒收 0；CPU 分配检查通过；四个 `.cvx` 哈希板机重编全部一致 | [RESIZE_DUALCORE.md](docs/RESIZE_DUALCORE.md) |
 | stride-2 卷积 FAST 原型 `conv2d_s2_fast` | ❌ 未上板 | 编译 / docc / doctor 拒收 0 | §2 |
 
-※ 真机数字来源：2026-11-14 晚队友在 calculet-MS-A2（2 芯粒，dort 0.4.1）上的运行报告，运行的是审查修复版程序（提交 `4cea49b`）。板上原始输出、`timing.txt`、`compare.json` 正在入库，入库后此处换成文件链接。**在那之前，这一列是转述，不是仓库内可核验的证据。**
+真机环境：calculet-MS-A2，2 芯粒，Driver 0.9.3 / DRT 74832e51，dort 0.4.1；VAE 运行的是审查修复版程序（分支 `jax/review-sd-vae`，提交 `4cea49b`），双核 Resize 运行 `jax/resize-dualcore` @ `2ddef94`。原始输出、计时与对比文件见 [evidence/board_2026-11-14/](evidence/board_2026-11-14/)。板机缺 `/opt/data/locks`，运行带 `--board-lock external`，CalRT 流带未开启（性能降级，不影响数值）。
 
 **10 分钟内无板子能复现什么**：见 [JUDGE_GUIDE.md](docs/JUDGE_GUIDE.md)（calDNN 图演示、43 项测试、CPU 参考复核；有 calculet 工具链时 7 个程序的编译与 docc doctor）。
 
@@ -28,7 +28,7 @@ BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队
 | 11-14 15:37 / 17:02 | Jax | VAE 代码审查（两条阻断级发现）、生成器修复并重新生成 5 段 |
 | 11-14 19:17 – 19:33 | nssdd / Jax | 参考图入库；两个分支合并进 master |
 | 11-14 20:16 | Jax | Resize 双核版与计时程序 |
-| 11-14 晚 | 队友 | 真机运行 Resize 两例与 VAE 5 段（见 ※） |
+| 11-14 晚 | 队友 | 真机运行 Resize 两例、VAE 5 段、Resize 双核对比；报告与原始件入库（`evidence/`） |
 
 ---
 
@@ -60,7 +60,7 @@ BoHack 2026 · Calculet NPU CalVX 算子与端到端模型移植赛题 · 团队
 | --- | --- | --- |
 | `resize_bilinear2` | **双线性上采样 ×2**（NHWC bf16，`align_corners=False`，边缘 clamp；f32 中间计算 + RNE 舍 bf16）；`[H][W][C] → [2H][2W][C]` | ✅ 编译 / docc calbin / doctor / 确定性 / 反汇编 / CPU 参考全过；✅ 已注册进 calDNN 图与引擎表（主机侧编排通过，未发射）；✅ **真机逐位相同**（见 §0 ※） |
 | `resize_bilinear2_tiled` | 同上，**通道分块版**：按 `CC` 把 C 切块，支持大 C（实测 C=256；原版上限 C≤128） | ✅ 同上（C=256 全链路通过）；✅ 真机逐位相同（见 §0 ※） |
-| `resize_bilinear2_tiled2` | 分块版的**双核版**：两核各算一半通道块，数值与分块版逐位相同；配套 `resize_probe_big2` / `resize_probe_huge{,2}` 三个程序做单核 vs 双核同形状计时 | ✅ 编译 / docc / doctor 拒收 0；✅ CPU 分配检查；❌ **真机未跑，无性能数据**，见 [`docs/RESIZE_DUALCORE.md`](docs/RESIZE_DUALCORE.md) |
+| `resize_bilinear2_tiled2` | 分块版的**双核版**：两核各算一半通道块，数值与分块版逐位相同；配套 `resize_probe_big2` / `resize_probe_huge{,2}` 三个程序做单核 vs 双核同形状计时 | ✅ 编译 / docc / doctor 拒收 0；✅ CPU 分配检查；✅ **真机与单核逐字节相同**；墙钟比 huge 1.10 / big 1.04（含固定开销，非 kernel 净时间），见 [`docs/RESIZE_DUALCORE.md`](docs/RESIZE_DUALCORE.md) |
 | `conv2d_s2_fast`（实验） | **3×3、stride=2 卷积 + bias + SiLU** 的 FAST 路原型：偶/奇像素各一份 VB cache，让 tap 的 lhs 都成为连续 16 行；用于补齐 `conv2d!` 只对 `S==1` 开 FAST 的缺口 | ✅ 编译 / docc calbin / doctor / 反汇编；❌ 数值与性能待板；**未合入共享 `conv2d!`**（不影响现有模型），配同形状慢路对照 [`examples/conv2d_s2_ref`](examples/conv2d_s2_ref) |
 
 平台侧实测数字（本机 WSL2 + calculet 工具链 `rustc 1.98.1` / `docc 0.4.1` / `dort 0.4.1`）：
@@ -145,7 +145,7 @@ DEVICE=0 CAL_ROOT=$PWD/onboard_cal CASE_DIR=$PWD/cases OUT=$PWD/board_out bash r
 
 ## 5. 已知限制 / 下一步
 
-1. **真机已验证**：Resize 两例、VAE 5 段（§0）。**未上板**：Resize 双核版、`conv2d_s2_fast`。真机原始产物尚未入库。
+1. **真机已验证**：Resize 两例、VAE 5 段、Resize 双核版（§0，原始件在 `evidence/board_2026-11-14/`）。**未上板**：`conv2d_s2_fast`。**未测**：kernel 净时间（无 `stamp` 插桩）。
 2. `resize`：固定 ×2、NHWC、`C≤128`（tiled 版按 `CC` 放宽到约 `W*CC*56B<=384KiB`）；已上板的两个包是单核版；双核版已编译待板（[`docs/RESIZE_DUALCORE.md`](docs/RESIZE_DUALCORE.md)）；行流水优化未做。
 3. `conv2d_s2_fast`：实验原型，未合入共享 `conv2d!`；需先做同硬件慢路对拍 + 性能 A/B，再考虑合并/接入 YOLO26n。
 4. **图/引擎接入**：Resize 已注册进 calDNN 图与 calBLAS 引擎表（[CALDNN_INTEGRATION.md](docs/CALDNN_INTEGRATION.md)），主机侧 Plan / bind 通过；calDNN 的图发射路径官方尚未打通，所以上板仍走整程序 calbin 路线。
@@ -155,7 +155,7 @@ DEVICE=0 CAL_ROOT=$PWD/onboard_cal CASE_DIR=$PWD/cases OUT=$PWD/board_out bash r
 
 ## 6. 说明
 
-- 本仓库为 2026-11-13 黑客松工作快照；平台侧 / 本地数字均来自真实执行（日志与产物在 `evidence/`），真机数字来源见 §0 ※；未验证项在文档中显式标注。
+- 本仓库为 2026-11-13 黑客松工作快照；平台侧 / 本地数字均来自真实执行（日志与产物在 `evidence/`），真机数字的原始件在 `evidence/board_2026-11-14/`（§0）；未验证项在文档中显式标注。
 - 代码采用与 calBLAS 仓库一致的风格；所有原语调用均来自仓库真实 API（`npu/src/lib.rs`、calBLAS 模板），未猜测接口。
 - 真机验证后请把 `board_out/`（输出 + 日志）与 `docs/REAL_DEVICE_VERIFICATION.md` §8 记录模板一起归档/提 PR。
 
