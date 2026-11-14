@@ -1,3 +1,5 @@
+> 本地验收脚本已更新：比较失败返回非零退出码；fast/ref 必须指定 `--mode exact`，卷积对 CPU 指定 `--mode conv-cpu`。一键上板脚本失败即停止，且 OUT 必须是尚不存在的新目录。详见 [本地验证记录](LOCAL_VALIDATION.md)。
+
 # 真机验证操作手册（Calculet NPU：Resize 算子 + stride-2 卷积原型）
 
 **版本**：2026-11-13 22:10
@@ -286,8 +288,8 @@ python3 compare_bf16.py out_resize_big.bin cases/resize_big/expected.bin   --lab
 | 结果 | 含义 | 处理 |
 | --- | --- | --- |
 | `VERDICT: EXACT`（100% 逐位） | ✅ 完全正确 | 记录 PASS |
-| `NEAR`：逐位 ≥99.9% 且 max ≤2 ULP | ✅ 可接受（原因见 §7.5：f32 中间运算合同是 rnu、numpy 是 RNE；`0.75/0.25` 权重使 tie 极少） | 记录 PASS，注明差异元素数 |
-| 逐位 <99%，或 max >2 ULP | ❌ FAIL | 按 §9 排查（先查输入/输出大小、bf16 位型、板卡状态） |
+| `PASS`（resize）：逐位 ≥99.9% 且 max ≤2 ULP | ✅ 可接受（原因见 §7.5：f32 中间运算合同是 rnu、numpy 是 RNE；`0.75/0.25` 权重使 tie 极少） | 记录 PASS，注明差异元素数 |
+| 逐位 <99.9%，或 max >2 ULP | ❌ FAIL | 按 §9 排查（先查输入/输出大小、bf16 位型、板卡状态） |
 
 ### 7.3 用例 3：conv fast vs 慢路（**最严格**）
 
@@ -295,7 +297,7 @@ python3 compare_bf16.py out_resize_big.bin cases/resize_big/expected.bin   --lab
 python3 compare_bf16.py out_conv_fast.bin out_conv_ref.bin \
   --actual-shape 84,84,64  --crop 2:82,2:82 \
   --expected-shape 84,84,64 --expected-crop 2:82,2:82 \
-  --label conv_fast_vs_ref
+  --mode exact --label conv_fast_vs_ref
 ```
 
 **判定**：必须 `VERDICT: EXACT`（逐位相同）。
@@ -305,9 +307,9 @@ python3 compare_bf16.py out_conv_fast.bin out_conv_ref.bin \
 
 ```bash
 python3 compare_bf16.py out_conv_fast.bin cases/conv_s2/expected.bin \
-  --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --label conv_fast_vs_cpu
+  --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --mode conv-cpu --label conv_fast_vs_cpu
 python3 compare_bf16.py out_conv_ref.bin  cases/conv_s2/expected.bin \
-  --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --label conv_ref_vs_cpu
+  --actual-shape 84,84,64 --crop 2:82,2:82 --expected-shape 80,80,64 --mode conv-cpu --label conv_ref_vs_cpu
 ```
 
 **判定（两个都应满足）**：`cosine ≥ 0.9999` 且 `max diff (bf16 ULP) ≤ 4`。

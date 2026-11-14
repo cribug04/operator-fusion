@@ -11,6 +11,7 @@
 #[macro_export]
 macro_rules! resize_bilinear2 {
     ($vis:vis $name:ident: h = $h:expr, w = $w:expr, c = $c:expr) => {
+        $crate::desc!($vis $name: ResizeDesc { h: $h as u32, w: $w as u32, c: $c as u32, scale: 2, mode: $crate::caldnn::Interp::Bilinear });
         #[npu::kernel(numerics = "ks1")]
         $vis fn $name(x: npu::Ptr<npu::Ddr, npu::bf16>, y: npu::Ptr<npu::Ddr, npu::bf16>) {
             const H: usize = $h;

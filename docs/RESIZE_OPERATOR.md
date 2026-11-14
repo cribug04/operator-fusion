@@ -164,7 +164,7 @@ d=np.abs(f(a)-f(b)); print('max|d|',d.max(),'mean|d|',d.mean())
 3. 只支持 **×2、NHWC、C ≤ 128**；任意尺寸/倍率、NCHW、双三次插值未实现。
 4. **ping/pong 警告**：`mem.decl` 已标 `double_buffer`，但 docc 对本程序仍把 ping/pong 分到同一地址（doctor 通过、仅警告）；多次推理前需确认主机侧缓冲切换策略。
 5. `docc elf kabi` 对本 kernel 报 `calt-bind` 错误（docc 自己的诊断说「多半是 docc 自己的缺陷」）；`docc calbin from-calvx` 路线不受影响，calbin 的 CCU ELF 已生成。
-6. **未接入 calDNN 图/引擎表**：CV 算子当前无图路径（`CALCULET_RECON.md` §5.6），要满足赛题「路线 A 注册进引擎表」还需跨仓库改 `calDNN`（Desc + Op + Graph 方法 + Engine 项）。
+6. ~~未接入 calDNN 图/引擎表~~ **2026-11-14 已接入**：`ResizeDesc` + `Op::Resize` + `Graph::resize` + calBLAS `Resize` 引擎 + 探针引擎表，主机侧 `Plan::new` / `bind` 通过、5 项测试通过；但 calDNN 的计划发射路径官方尚未打通，真机仍走整程序路线。详见 [CALDNN_INTEGRATION.md](CALDNN_INTEGRATION.md)。
 
 ---
 
@@ -173,7 +173,7 @@ d=np.abs(f(a)-f(b)); print('max|d|',d.max(),'mean|d|',d.mean())
 1. **真机数值验证**（需要板卡）：按 §5 跑 `dort calbin run`，与 `expected_64x64x16_bf16.bin` 比对；若不一致，先用更小的尺寸（如 8×8×16）定位。
 2. **cores = 2 版本**：按行分核；需要重新设计 clamp（当前靠三段展开，分核后边界行归属需固定）。
 3. **通用尺寸**：把 `2×` 扩成 `H_out × W_out`（坐标/权重运行时计算，注意 docc 的标量控制流限制），或至少支持整数倍率 `SX/SY` 编译期参数。
-4. **接入 calDNN**：`ResizeDesc` + `Op::Resize` + `Graph::resize` + calBLAS Engine + `entry!`，满足路线 A 的「引擎表注册、被图调用」。
+4. ~~接入 calDNN~~ 已完成（2026-11-14），见 [CALDNN_INTEGRATION.md](CALDNN_INTEGRATION.md)。
 5. **接入 CV 模型**：优先对接 YOLO26n 的预处理/上采样段或 SD 的 VAE 上采样段（真实权重 + 端到端对比）。
 6. **性能**：行流水复用（相邻输出行共享输入行插值结果，可减少 2/3 的行内插值计算）。
 

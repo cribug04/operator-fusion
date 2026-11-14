@@ -24,7 +24,7 @@ index 0000000..eeb7bc3
 +[workspace]
 diff --git a/examples/conv2d_s2_probe/README.md b/examples/conv2d_s2_probe/README.md
 new file mode 100755
-index 0000000..21b13cf
+index 0000000..6d95477
 --- /dev/null
 +++ b/examples/conv2d_s2_probe/README.md
 @@ -0,0 +1,55 @@
@@ -106,7 +106,7 @@ index 0000000..4a60349
 +mod step;
 diff --git a/examples/conv2d_s2_probe/src/step.rs b/examples/conv2d_s2_probe/src/step.rs
 new file mode 100755
-index 0000000..7ac84fe
+index 0000000..5898594
 --- /dev/null
 +++ b/examples/conv2d_s2_probe/src/step.rs
 @@ -0,0 +1,18 @@
@@ -206,7 +206,7 @@ index 0000000..894d075
 +mod step;
 diff --git a/examples/conv2d_s2_ref/src/step.rs b/examples/conv2d_s2_ref/src/step.rs
 new file mode 100755
-index 0000000..98a21bf
+index 0000000..e4cf173
 --- /dev/null
 +++ b/examples/conv2d_s2_ref/src/step.rs
 @@ -0,0 +1,18 @@
@@ -230,10 +230,10 @@ index 0000000..98a21bf
 +}
 diff --git a/examples/resize_probe/Cargo.toml b/examples/resize_probe/Cargo.toml
 new file mode 100755
-index 0000000..2c9df2a
+index 0000000..3045325
 --- /dev/null
 +++ b/examples/resize_probe/Cargo.toml
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,20 @@
 +[package]
 +name = "resize-probe"
 +version = "0.1.0"
@@ -253,6 +253,7 @@ index 0000000..2c9df2a
 +
 +# 独立工作区：不影响 calBLAS 主工作区的成员列表
 +[workspace]
++members = [".", "plan"]
 diff --git a/examples/resize_probe/README.md b/examples/resize_probe/README.md
 new file mode 100755
 index 0000000..58d7028
@@ -317,6 +318,144 @@ index 0000000..58d7028
 +3. `docc elf kabi` 对该 kernel 报 `calt-bind` 错误（docc 自己的诊断也说「多半是 docc 自己的缺陷」）；`docc calbin from-calvx` 路线不受影响。
 +4. 目前只支持 **×2、NHWC、C ≤ 128**；任意尺寸 / 任意倍率 / NCHW / 进 calDNN 图（Engine 注册）是下一步。
 +5. 性能未测（无板）；单核 + 每行重复计算 3 行，优化空间明确（行流水复用可减少 2/3 的行内插值计算）。
+diff --git a/examples/resize_probe/plan/Cargo.toml b/examples/resize_probe/plan/Cargo.toml
+new file mode 100644
+index 0000000..00c9c4c
+--- /dev/null
++++ b/examples/resize_probe/plan/Cargo.toml
+@@ -0,0 +1,9 @@
++[package]
++name = "resize-plan"
++version = "0.1.0"
++edition = "2024"
++publish = false
++
++[dependencies]
++resize-probe = { path = ".." }
++caldnn = { path = "../../../../calDNN" }
+diff --git a/examples/resize_probe/plan/src/main.rs b/examples/resize_probe/plan/src/main.rs
+new file mode 100644
+index 0000000..6c50f16
+--- /dev/null
++++ b/examples/resize_probe/plan/src/main.rs
+@@ -0,0 +1,104 @@
++//! `cargo run -p resize-plan`：搭一张「输入图 ⇒ 双线性 ×2 ⇒ 输出」的图 ⇒ 用 resize_probe 的引擎表编排计划 ⇒ 打印作业 ⇒ 示意地址 bind。
++//! 只证明「Resize 已注册进 calDNN 图 / 引擎表、能被图调用并编排」；⛔ 没有发射、没有上板。
++use caldnn::{Arg, Elem, FirstFit, Graph, Plan, Uid, VariantPack};
++use resize_probe::engines::ENGINES;
++
++fn main() {
++    let mut g = Graph::default();
++    let x = g.input(Elem::Bf16, &[32, 32, 16]);
++    let y = g.upsample_bilinear2(x);
++    let y = g.output(y);
++    let plan = Plan::new(&g, ENGINES, &FirstFit::default()).unwrap_or_else(|e| {
++        eprintln!("{e}");
++        std::process::exit(1)
++    });
++    let [ddr, sram] = plan.workspace();
++    println!("{} 个张量、{} 个运算 ⇒ {} 个作业，工作区 DDR {ddr} 字节、SRAM {sram} 字节", g.tensors().len(), g.ops().len(), plan.jobs().len());
++    for j in plan.jobs() {
++        let args: Vec<String> = j.args.iter().map(|a| if let Arg::Ptr(u) = a { format!("%{u}") } else { format!("{a:?}") }).collect();
++        println!("  {}({})  arg_kinds = {:?}", j.kernel, args.join(", "), j.arg_kinds);
++    }
++    let ptrs = [(x, 0x1_0000_0000u64), (y, 0x1_0001_0000u64)];
++    let jobs = plan.bind(&VariantPack { ptrs: &ptrs, workspace: 0x1_0010_0000, sram: 0x0800_0000 }).unwrap_or_else(|e| {
++        eprintln!("没给地址：{e:?}");
++        std::process::exit(1)
++    });
++    for j in &jobs {
++        println!("bind ⇒ {}({:?})", j.kernel, j.args);
++    }
++    let _: Uid = y;
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use caldnn::{Interp, Op, ResizeDesc};
++
++    fn plan_for(dims: &[u32]) -> Result<Plan<'static>, caldnn::Unsupported> {
++        let mut g = Graph::default();
++        let x = g.input(Elem::Bf16, dims);
++        let y = g.upsample_bilinear2(x);
++        g.output(y);
++        Plan::new(&g, ENGINES, &FirstFit::default())
++    }
++
++    #[test]
++    fn graph_records_resize_op_and_output_dims() {
++        let mut g = Graph::default();
++        let x = g.input(Elem::Bf16, &[32, 32, 16]);
++        let y = g.upsample_bilinear2(x);
++        assert_eq!(g[y].dims, vec![64, 64, 16]);
++        assert_eq!(g[y].elem, Elem::Bf16);
++        assert!(g[y].virt, "没标 output 前是虚拟张量");
++        let g2 = g.clone();
++        g.output(y);
++        assert!(!g[y].virt);
++        let expect = ResizeDesc { h: 32, w: 32, c: 16, scale: 2, mode: Interp::Bilinear };
++        assert_eq!(g2.ops(), &[Op::Resize(expect, [x, y])]);
++    }
++
++    #[test]
++    fn engine_table_matches_specialized_shape() {
++        let plan = plan_for(&[32, 32, 16]).expect("32×32×16 在引擎表里");
++        assert_eq!(plan.jobs().len(), 1);
++        let j = &plan.jobs()[0];
++        assert_eq!(j.kernel, "resize_bilinear2");
++        assert_eq!(j.args, vec![Arg::Ptr(0), Arg::Ptr(1)], "参数是张量号 x=%0、y=%1");
++        assert_eq!(plan.workspace(), [0, 0], "输出已标 output，没有虚拟张量要分工作区");
++    }
++
++    #[test]
++    fn other_shapes_are_unsupported() {
++        for dims in [&[16u32, 16, 16][..], &[32, 32, 32], &[64, 64, 16]] {
++            let e = plan_for(dims).err().expect("不在表里的形状要报 Unsupported");
++            assert_eq!(e.at, 0);
++            assert!(matches!(e.op, Op::Resize(..)));
++        }
++    }
++
++    #[test]
++    fn bind_replaces_uids_with_addresses() {
++        let mut g = Graph::default();
++        let x = g.input(Elem::Bf16, &[32, 32, 16]);
++        let y = g.upsample_bilinear2(x);
++        let y = g.output(y);
++        let plan = Plan::new(&g, ENGINES, &FirstFit::default()).unwrap();
++        let ptrs = [(x, 0x1000u64), (y, 0x2000u64)];
++        let jobs = plan.bind(&VariantPack { ptrs: &ptrs, workspace: 0, sram: 0 }).unwrap();
++        assert_eq!(jobs[0].args, vec![Arg::Ptr(0x1000), Arg::Ptr(0x2000)]);
++        assert!(matches!(plan.bind(&VariantPack { ptrs: &ptrs[..1], workspace: 0, sram: 0 }), Err(caldnn::Unbound(u)) if u == y));
++    }
++
++    #[test]
++    fn intermediate_resize_gets_workspace() {
++        // 图里连用两次 ×2：中间结果是虚拟张量，计划要给它分工作区（64·64·16·2 = 131072 B，512 B 对齐）
++        let mut g = Graph::default();
++        let x = g.input(Elem::Bf16, &[32, 32, 16]);
++        let mid = g.upsample_bilinear2(x);
++        let y = g.upsample_bilinear2(mid);
++        g.output(y);
++        // 第二个 ×2 是 64×64×16，表里没有 ⇒ Unsupported at 1；但工作区的逻辑在 Plan::new 里，先确认报错位置
++        let e = Plan::new(&g, ENGINES, &FirstFit::default()).err().unwrap();
++        assert_eq!(e.at, 1);
++    }
++}
+diff --git a/examples/resize_probe/src/engines.rs b/examples/resize_probe/src/engines.rs
+new file mode 100644
+index 0000000..5742714
+--- /dev/null
++++ b/examples/resize_probe/src/engines.rs
+@@ -0,0 +1,7 @@
++//! 引擎表：Resize 这一种运算、32×32×16 这一个特化。`Plan::new` 按图里 `Op::Resize` 的 `ResizeDesc` 在表里找同形的 kernel。
++use crate::kernels as k;
++use calblas::engines::Resize;
++use calblas::entry;
++use caldnn::Engine;
++
++pub const ENGINES: &[&dyn Engine] = &[&Resize(&[entry!(k::resize_bilinear2)])];
 diff --git a/examples/resize_probe/src/kernels.rs b/examples/resize_probe/src/kernels.rs
 new file mode 100755
 index 0000000..9af8df3
@@ -327,14 +466,18 @@ index 0000000..9af8df3
 +calblas::resize_bilinear2!(pub resize_bilinear2: h = 32, w = 32, c = 16);
 diff --git a/examples/resize_probe/src/lib.rs b/examples/resize_probe/src/lib.rs
 new file mode 100755
-index 0000000..919f0ab
+index 0000000..71a4a5b
 --- /dev/null
 +++ b/examples/resize_probe/src/lib.rs
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,11 @@
 +//! resize 探针 example：一个 CalVX 程序只跑 `resize_bilinear2`，输入/输出由主机按 decls 写入/读回。
 +#![no_std]
 +
 +pub mod kernels;
++
++/// 引擎表（主机侧：图 ⇒ 计划）。设备 target 上不编（kernel 的主机桩只在主机上有）。
++#[cfg(not(all(target_arch = "riscv32", target_os = "none")))]
++pub mod engines;
 +
 +#[cfg(feature = "step")]
 +mod step;
@@ -473,6 +616,19 @@ index 0000000..63c9ebf
 +- 通道分块不改数值（逐通道独立），只是把工作集切开；**同一套 CPU 参考/误差口径**。
 +- 生成代码里 `for cc in 0..NC` 是常数轮数循环（与 `conv2d!` 的 `for nb in 0..CO/NC` 同构），内层仍是单层运行时行循环。
 +- 代码由 `verify.sh` 一键复现。
+diff --git a/examples/resize_probe_big/src/engines.rs b/examples/resize_probe_big/src/engines.rs
+new file mode 100644
+index 0000000..1daae85
+--- /dev/null
++++ b/examples/resize_probe_big/src/engines.rs
+@@ -0,0 +1,7 @@
++//! 引擎表：Resize 这一种运算、32×32×256（通道分块 cc = 64）这一个特化。图里 `Op::Resize` 的描述与 `resize_bilinear2_big::DESC` 相等时命中。
++use crate::kernels as k;
++use calblas::engines::Resize;
++use calblas::entry;
++use caldnn::Engine;
++
++pub const ENGINES: &[&dyn Engine] = &[&Resize(&[entry!(k::resize_bilinear2_big)])];
 diff --git a/examples/resize_probe_big/src/kernels.rs b/examples/resize_probe_big/src/kernels.rs
 new file mode 100755
 index 0000000..b445d6e
@@ -483,14 +639,18 @@ index 0000000..b445d6e
 +calblas::resize_bilinear2_tiled!(pub resize_bilinear2_big: h = 32, w = 32, c = 256, cc = 64);
 diff --git a/examples/resize_probe_big/src/lib.rs b/examples/resize_probe_big/src/lib.rs
 new file mode 100755
-index 0000000..0194385
+index 0000000..3877904
 --- /dev/null
 +++ b/examples/resize_probe_big/src/lib.rs
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,11 @@
 +//! resize 通道分块探针：32×32×256 bf16 ⇒ 64×64×256 bf16（C=256，原版 C≤128 放不下，用分块版 cc=64）。
 +#![no_std]
 +
 +pub mod kernels;
++
++/// 引擎表（主机侧：图 ⇒ 计划）。设备 target 上不编（kernel 的主机桩只在主机上有）。
++#[cfg(not(all(target_arch = "riscv32", target_os = "none")))]
++pub mod engines;
 +
 +#[cfg(feature = "step")]
 +mod step;
@@ -537,11 +697,31 @@ index 0000000..4f4b36b
 +docc calbin doctor /tmp/resize_big_cal
 +echo "doctor exit=$?"
 +docc elf ccu view /tmp/resize_big_cal/resize_big_pkg/ccu0_chip0.elf | head -12
+diff --git a/src/engines.rs b/src/engines.rs
+index 1fbbc38..40321d3 100644
+--- a/src/engines.rs
++++ b/src/engines.rs
+@@ -2,7 +2,7 @@
+ //! 作业的指针参数先填张量号（`Uid` ⇒ `Ptr`），[`caldnn::Plan::bind`] 再换成地址。
+ use caldnn::{
+     CompressDesc, ConvDesc, DeltanetDesc, HcDesc, LightningIndexDesc, SinkAttnDesc, EmbeddingDesc, Engine, Graph, HwptnDesc, MatmulDesc, MoeDenseDesc, MoeGatePostDesc, MoeGatePreDesc, MoeGluDesc, NormDesc, Notes, Op,
+-    PwDesc, RopeDesc, ScatterKvDesc, SdpaDesc, SharedGatedAddDesc, SparseIndexDesc, SparseSdpaDesc, Step, TransferDesc,
++    PwDesc, ResizeDesc, RopeDesc, ScatterKvDesc, SdpaDesc, SharedGatedAddDesc, SparseIndexDesc, SparseSdpaDesc, Step, TransferDesc,
+ };
+ use npu::{bf16, f8e4m3, u4, Ddr, Launch, Ptr, Ram};
+ 
+@@ -129,4 +129,6 @@ engines! {
+     Broadcast(TransferDesc, Transfer, Notes::CROSS_CHIP) fn(Bf) = |io| (io[0]);
+     /// `calblas::mat2_hwptn!` / `calblas::hwptn2_mat!`
+     Hwptn(HwptnDesc, Hwptn, Notes::NONE) fn(Bf, Bf) = |io| (io[0], io[1]);
++    /// `calblas::resize_bilinear2!` / `calblas::resize_bilinear2_tiled!`（NHWC 无边框、×2、align_corners = false）
++    Resize(ResizeDesc, Resize, Notes::NONE) fn(Bf, Bf) = |io| (io[0], io[1]);
+ }
 diff --git a/src/kernels/vision.rs b/src/kernels/vision.rs
-index 0e3bbf2..12a581d 100644
+index 0e3bbf2..05e8422 100644
 --- a/src/kernels/vision.rs
 +++ b/src/kernels/vision.rs
-@@ -739,3 +739,319 @@ macro_rules! spatial_attn {
+@@ -739,3 +739,321 @@ macro_rules! spatial_attn {
          $r16.reduce(Combine::$kind, $m16, 1);
      }};
  }
@@ -558,6 +738,7 @@ index 0e3bbf2..12a581d 100644
 +#[macro_export]
 +macro_rules! resize_bilinear2 {
 +    ($vis:vis $name:ident: h = $h:expr, w = $w:expr, c = $c:expr) => {
++        $crate::desc!($vis $name: ResizeDesc { h: $h as u32, w: $w as u32, c: $c as u32, scale: 2, mode: $crate::caldnn::Interp::Bilinear });
 +        #[npu::kernel(numerics = "ks1")]
 +        $vis fn $name(x: npu::Ptr<npu::Ddr, npu::bf16>, y: npu::Ptr<npu::Ddr, npu::bf16>) {
 +            const H: usize = $h;
@@ -659,6 +840,7 @@ index 0e3bbf2..12a581d 100644
 +#[macro_export]
 +macro_rules! resize_bilinear2_tiled {
 +    ($vis:vis $name:ident: h = $h:expr, w = $w:expr, c = $c:expr, cc = $cc:expr) => {
++        $crate::desc!($vis $name: ResizeDesc { h: $h as u32, w: $w as u32, c: $c as u32, scale: 2, mode: $crate::caldnn::Interp::Bilinear });
 +        #[npu::kernel(numerics = "ks1")]
 +        $vis fn $name(x: npu::Ptr<npu::Ddr, npu::bf16>, y: npu::Ptr<npu::Ddr, npu::bf16>) {
 +            const H: usize = $h;

@@ -17,3 +17,4 @@ npu = { path = "../../../npu" }
 
 # 独立工作区：不影响 calBLAS 主工作区的成员列表
 [workspace]
+members = [".", "plan"]
