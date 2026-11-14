@@ -23,7 +23,7 @@
 ```
 sd_vae_onboard_pkg/
 ├── cal_a/  cal_b1/  cal_b2a/  cal_b2b/  cal_c/   # docc calbin 目录（各含 param_blk0.bin 与 pkg_*/ 下的 CCU ELF）
-├── in_x.bin          # 段 A 的输入：latent ⇒ border bf16 [68][68][16]，147,968 B
+├── in_x.bin          # 段 A 的输入：latent ⇒ border bf16 [68][68][16] 再补零到 decl 大小，163,840 B
 ├── latent.bin        # 原始 z（f32 [4,64,64]，= randn/0.18215），留档
 ├── ref_image.npy     # torch/diffusers fp32 参考图 [3,512,512] f32（未 clamp）
 ├── ref_image.png     # 参考图（人工看）
@@ -44,13 +44,13 @@ sha256sum -c SHA256SUMS.txt          # 期望全部 OK
 
 | 文件 | 字节 | sha256 |
 | --- | --- | --- |
-| `in_x.bin` | 147,968 | `1e993cf242f0b4ce4acfd1c9e12bfddda4aab048270837a443a276c3930922e9` |
+| `in_x.bin` | 163,840 | `cf3eaee6bdb2c5cb05d6dc45d47a2467d172865dae591140e3360ee1b3784ea8` |
 | `latent.bin` | 65,536 | `79ed341043fe4be1f398e53a3af03d190d0a189fbc23034570acba4e8330a031` |
 | `ref_image.npy` | 3,145,856 | `b7cc6839afa2b5a6d0d16b73bc061216d5cc4fcab032e39f3a3f7e8442bce126` |
 | `run_on_board.sh` | 1,789 | `c1d51225c8cbee87e2553423fd4ee3433dee73c89489ea4fc62236939e2c2b56` |
-| `host.py` | 4,987 | `5f569960e76ad9abc75360221b3de74a43162ea52b2485c78db05c36a832ea7d` |
+| `host.py` | 5,362 | `0afe3eca2ab3b65aff1c8c3b731c77be0bd2bc577f73dcda91fd35005c725a54` |
 
-> `in_x.bin` 是**已经按设备布局摆好的输入**（border NHWC bf16，前 4 通道是 z，其余 0），⛔ 不要拿 `latent.bin` 直接当输入喂。
+> `in_x.bin` 是**已经按设备布局摆好的输入**（border NHWC bf16，前 4 通道是 z，其余 0；文件补零到 163,840 B 正好等于程序里 `in_x` 的声明大小，dort `--raw-in` 要求大小一致）。⛔ 不要拿 `latent.bin` 直接当输入喂。
 
 ---
 
@@ -93,7 +93,7 @@ cd sd_vae_onboard_pkg
 
 | # | 命令（在包目录里执行） | 输入 | 输出 | 输出字节 |
 | --- | --- | --- | --- | --- |
-| 1 | `dort calbin run -i 0 -f cal_a -m pkg_a --raw-in in_x.bin --raw-out out_a.bin --in-tensor in_x --out-tensor out_y` | `in_x.bin` 147,968 B | `out_a.bin` | 4,734,976 |
+| 1 | `dort calbin run -i 0 -f cal_a -m pkg_a --raw-in in_x.bin --raw-out out_a.bin --in-tensor in_x --out-tensor out_y` | `in_x.bin` **163,840 B**（图像 147,968 + 补零） | `out_a.bin` | 4,734,976 |
 | 2 | `dort calbin run -i 0 -f cal_b1 -m pkg_b1 --raw-in out_a.bin --raw-out out_b1.bin --in-tensor in_x --out-tensor out_y` | `out_a.bin` 4,734,976 B | `out_b1.bin` | 17,842,176 |
 | 3 | `dort calbin run -i 0 -f cal_b2a -m pkg_b2a --raw-in out_b1.bin --raw-out out_b2a.bin --in-tensor in_x --out-tensor out_y` | `out_b1.bin` 17,842,176 B | `out_b2a.bin` | 17,842,176 |
 | 4 | `dort calbin run -i 0 -f cal_b2b -m pkg_b2b --raw-in out_b2a.bin --raw-out out_b2b.bin --in-tensor in_x --out-tensor out_y` | `out_b2a.bin` 17,842,176 B | `out_b2b.bin` | 69,222,400 |
@@ -163,7 +163,7 @@ python3 host.py raw out_c.bin               # 字节数 + sha256
 | `dort device -i 0` 无设备 / `未发现 Calculet 设备` | 驱动未装、板子没插好、RT 没起 | 先 `lspci \| grep -i calculet`；再按 §3 恢复（reprobe + rmmod/insmod） |
 | `configure 失败：NoDevice` | 板子 RT DOWN | §3 恢复流程；不要只 rmmod/insmod |
 | `deployed 0 bytes` / `flying/flying` 挂死 | calbin 目录不完整（缺 ELF/参数块）或 `-m` 子模型名不对 | 核对 `ls cal_a/pkg_a` 的 ELF；子模型名必须是 `pkg_a`…`pkg_c`；用 `--deploy-only --dump-layout` 先看 |
-| `raw-in` 尺寸不符 / 读输入报错 | 文件拿错（最常见：喂成 `latent.bin`、或上一段没用 `-m` 指定子模型） | 对照 §4.2 的字节数表 |
+| `raw-in` 尺寸不符 / 读输入报错 | 文件拿错或大小不对（最常见：喂成 147,968 B 的裸图像、`latent.bin`、或上一段没用 `-m` 指定子模型） | 第一段必须喂**补零到 163,840 B** 的 `in_x.bin`；对照 §4.2 的字节数表 |
 | 某段输出全 0 | 上一段没真正跑完 / 输入文件是 0 字节 / 段链断开 | 从第 1 段逐段重跑；`ls -l out_*.bin` 看大小 |
 | 图像是噪声状条纹/花屏 | 段链中某段失败但 rc 被忽略；或输入布局不对 | 逐段 `host.py stage` 对照 §5 量级；确认 `in_x.bin` 的 sha256 |
 | 图像大体对但边缘/角落异常 | 输入/输出边框没清零（旧版程序才会） | 用本包（程序会在开头清 `out_y` 边框）；不要自己拼中间文件 |

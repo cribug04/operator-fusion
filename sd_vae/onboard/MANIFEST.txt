@@ -1,5 +1,5 @@
 MANIFEST.txt 0
-SD_VAE_REAL_DEVICE_VERIFICATION.md 12074
+SD_VAE_REAL_DEVICE_VERIFICATION.md 12324
 cal_a/model_memory_reserved_info.txt 375
 cal_a/param_blk0.bin 21483520
 cal_a/pkg_a/ccu0_chip0.elf 1414648
@@ -45,8 +45,8 @@ cal_c/pkg_c/cpu_chip0_pong.bin 4
 cal_c/pkg_c/pld_cpu_chip0_ping.bin 44
 cal_c/pkg_c/pld_cpu_chip0_pong.bin 44
 cal_c/pkg_c/submodel_memory_reserved_info.txt 613
-host.py 4987
-in_x.bin 147968
+host.py 5362
+in_x.bin 163840
 latent.bin 65536
 ref_image.npy 3145856
 ref_image.png 576950

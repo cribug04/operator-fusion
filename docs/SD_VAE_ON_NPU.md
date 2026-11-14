@@ -166,14 +166,14 @@ bash _recon/work/sd_vae/onboard/package_all.sh   # ⇒ /root/sd_vae/onboard_pkg 
 
 ## 7. 真机验证（怎么操作）
 
-### 7.1 包内容（`sd_vae_onboard_pkg.tar.gz`，80 MB，解出 107 MB；tar sha256 = `810e072071074d8b858ed78a310d1d205ee8d734aa2f501babca10d51cd363e6`）
+### 7.1 包内容（`sd_vae_onboard_pkg.tar.gz`，80 MB，解出 107 MB；tar sha256 = `eacb6a17ac3d5ea772f89d0a120ddfce84f7720a86cf91e0db543fd03f6378a8`）
 ```
 cal_a/ cal_b1/ cal_b2a/ cal_b2b/ cal_c/   # docc calbin 目录（含 param_blk0.bin 与 pkg_*/ 下 CCU ELF）
-in_x.bin        # stage a 的输入：latent ⇒ border bf16 [68][68][16]，147,968 B（sha256 1e993cf2…）
+in_x.bin        # stage a 的输入：latent ⇒ border bf16 [68][68][16] + 补零到 decl 163,840 B（sha256 cf3eaee6…）
 latent.bin      # 原始 z，留档（sha256 79ed3410…）
 ref_image.npy   # torch 参考图 [3,512,512] f32（sha256 b7cc6839…）
 ref_image.png   # 参考图（人工看）
-host.py         # input / image / stage / raw / compare 工具（sha256 5f569960…）
+host.py         # input / image / stage / raw / compare 工具（sha256 0afe3eca…）
 run_on_board.sh # 一键串 5 段 + 出图 + 对比 + 计时
 SD_VAE_REAL_DEVICE_VERIFICATION.md   # 真机手册
 MANIFEST.txt SHA256SUMS.txt

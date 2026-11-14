@@ -28,14 +28,21 @@ def from_bf16_bits(u):
     return ((np.asarray(u, dtype=np.uint32) << 16).view(np.float32)).copy()
 
 
+# stage A 的 in_x 声明大小（@act 之外的 input decl，4 KiB 对齐到 163,840；图像本身 147,968）
+STAGE_A_IN_BYTES = 163840
+
+
 def cmd_input(latent_path, out_path):
     z = np.fromfile(latent_path, dtype='<f4').reshape(4, 64, 64)
     buf = np.zeros((64 + 2 * B, 64 + 2 * B, 16), dtype=np.uint16)
     buf[B:B + 64, B:B + 64, :4] = to_bf16_bits(z.transpose(1, 2, 0))
     raw = buf.astype('<u2').tobytes()
+    assert len(raw) <= STAGE_A_IN_BYTES
+    # dort 的 --raw-in 会把文件原样写进输入张量（大小必须等于 decl）：补零到 163,840
+    raw = raw + b'\x00' * (STAGE_A_IN_BYTES - len(raw))
     with open(out_path, 'wb') as f:
         f.write(raw)
-    print(f'in_x: {len(raw)} B sha256={hashlib.sha256(raw).hexdigest()}')
+    print(f'in_x: {len(raw)} B (image 147,968 + pad) sha256={hashlib.sha256(raw).hexdigest()}')
 
 
 def cmd_image(raw_path, npy_path, png_path=None):
