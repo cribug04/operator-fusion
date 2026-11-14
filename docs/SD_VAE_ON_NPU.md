@@ -23,7 +23,7 @@
 
 ## 2. 交付物
 
-> 路径说明：下表的“工作区”指比赛用工作目录（本机 `C:/Users/10463/Desktop/bohack/`）；**在本 Gitee 仓库里，`_recon/work/sd_vae/xxx` 对应 `sd_vae/xxx`**（`gen/`、`kernels/`、`evidence/`、`onboard/`、`SMOKE.md`、`STAGE_EVIDENCE.md`），`docs/` 下是本文与真机手册。
+> 路径说明：下表的“工作区”指比赛用工作目录（队友本机工作目录）；**在本 Gitee 仓库里，`_recon/work/sd_vae/xxx` 对应 `sd_vae/xxx`**（`gen/`、`kernels/`、`evidence/`、`onboard/`、`SMOKE.md`、`STAGE_EVIDENCE.md`），`docs/` 下是本文与真机手册。
 
 | 路径（工作区） | 内容 |
 | --- | --- |

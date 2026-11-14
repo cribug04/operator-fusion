@@ -187,8 +187,8 @@
 
 ### 8.4 产物路径
 
-- 分块 resize：`_recon/work/resize/artifacts_big/`（cvx/cvxo、calbin、反汇编、doctor、确定性、CPU 参考与 bin）
-- s2 conv 原型：`_recon/work/conv_s2/artifacts/`（cvx/cvxo、calbin、反汇编、doctor、确定性）
-- 统一补丁：`_recon/work/conv_s2/artifacts/resize_and_conv_s2.patch`（763 行，17 个文件；sha256 `882fd866…`）
+- 分块 resize：`evidence/resize_big/`（cvx/cvxo、calbin、反汇编、doctor、确定性、CPU 参考与 bin）
+- s2 conv 原型：`evidence/conv_s2_fast/`、`evidence/conv_s2_ref/`（cvx/cvxo、calbin、反汇编、doctor、确定性）
+- 统一补丁：`patches/onboard_kit.patch`（已重新生成，含后续改动）（763 行，17 个文件；sha256 `882fd866…`）
 - 工作区仓库：`calculet-repos/calBLAS`（`vision.rs` 追加 3 个宏；`examples/resize_probe{,_big}`、`examples/conv2d_s2_probe/`）
 

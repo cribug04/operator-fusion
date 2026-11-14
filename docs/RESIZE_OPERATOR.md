@@ -4,8 +4,8 @@
 **真机验证**：见 [REAL_DEVICE_VERIFICATION.md](REAL_DEVICE_VERIFICATION.md)（含逐条命令、判定标准、排错表）
 **状态**：设备遍编译 ✅ · docc calbin 打包 ✅ · calbin doctor ✅ · 构建确定性 ✅ · CCU ELF 反汇编 ✅ · CPU 参考 ✅ · **真机运行 ❌（本机无板卡/模拟器）**
 **代码仓库**：`calculet-repos/calBLAS`（宏追加在 `src/kernels/vision.rs`，新增 `examples/resize_probe/`）
-**补丁**：`_recon/work/resize/artifacts/resize_bilinear2.patch`（280 行，7 个文件，干净 diff）
-**证据/产物**：`_recon/work/resize/artifacts/`（构建日志、calbin、ELF 反汇编、CPU 参考、输入/期望数据）
+**补丁**：`evidence/resize/resize_bilinear2.patch`（280 行，7 个文件，干净 diff）
+**证据/产物**：`evidence/resize/`（构建日志、calbin、ELF 反汇编、CPU 参考、输入/期望数据）
 
 ---
 
@@ -41,8 +41,8 @@
 | `calBLAS/examples/resize_probe/src/kernels.rs` | 特化：`calblas::resize_bilinear2!(pub resize_bilinear2: h=32, w=32, c=16);` |
 | `calBLAS/examples/resize_probe/src/step.rs` | `npu::decls! { in_x: input 32768 B, double_buffer; out_y: output 131072 B, double_buffer }` + `#[npu::program(chiplets=1, cores=1)] pub fn step()` |
 | `calBLAS/examples/resize_probe/verify.sh` | 一键：编译 → `docc calbin from-calvx` → `doctor` → ELF 查看 |
-| `_recon/work/resize/reference.py` | CPU 参考（numpy，严格复刻运算次序）+ 输入/期望数据生成 |
-| `_recon/work/resize/resize_bilinear2_macro.rs` | 宏源码（与 vision.rs 中追加内容相同，便于审阅） |
+| `evidence/resize/reference.py` | CPU 参考（numpy，严格复刻运算次序）+ 输入/期望数据生成 |
+| `kernels/resize_bilinear2.rs` | 宏源码（与 vision.rs 中追加内容相同，便于审阅） |
 
 **关键实现点（真实 API，全部来自仓库）**：
 
@@ -112,7 +112,7 @@ docc calbin doctor /tmp/resize_cal                             # exit 0（拒收
 
 ## 4. CPU 参考与测试数据
 
-`_recon/work/resize/reference.py`（Windows Python 3.13 + numpy 2.5.3 已运行）：
+`evidence/resize/reference.py`（Windows Python 3.13 + numpy 2.5.3 已运行）：
 
 ```
 input  : H=32 W=32 C=16 bf16, range [-1, 1]
@@ -195,7 +195,7 @@ CALCULET_RECON.md                              # 勘察报告（§15/§16 有环
 RESIZE_OPERATOR.md                             # 本文件
 calculet-repos/calBLAS/src/kernels/vision.rs   # 追加 resize_bilinear2! 宏
 calculet-repos/calBLAS/examples/resize_probe/  # 独立 example（Cargo.toml, src/, README.md, verify.sh）
-_recon/work/resize/
+evidence/resize/（原工作区目录）
 ├── resize_bilinear2_macro.rs                  # 宏源码（审阅用）
 ├── reference.py                               # CPU 参考 + 数据生成
 ├── input_32x32x16_bf16.bin                    # 真机测试输入
